@@ -323,22 +323,29 @@
     const t = taskById(id);
     if (!t) return;
     const r = current.prio.find((x) => x.id === id);
-    const sessions = current.plan.days.flatMap((d) => d.sessions.filter((s) => s.id === id).map((s) => `${C.fmtDay(d.day)}: ${fmtH(s.hours)}`));
+    const sess = current.plan.days.flatMap((d) => d.sessions.filter((s) => s.id === id).map((s) => ({ d: d.day, h: s.hours })));
     const fin = current.plan.finish[id];
+    const due = C.toDay(t.due), today = C.toDay(state.today);
+    const left = C.remaining({ ...t, scale: t.doneH > 0 ? 1 : current.ratio });
+    const dueRel = due - today < 0 ? `${today - due}d overdue` : due === today ? 'Today' : due - today === 1 ? 'Tomorrow' : `${due - today} days`;
+    const status = t.completed ? ['Done', 'ok'] : (current.plan.unfinished[id] || fin == null || fin > due) ? ['At risk', 'risk'] : ['On track', 'ok'];
     $('drawerBody').innerHTML = `
-      <div class="dr-head">${courseTile(t.course, 44)}<h3>${esc(t.title)}</h3></div>
-      <div class="hint">${esc(t.course)} · ${esc(t.type)} · due ${C.fmtDay(C.toDay(t.due))} · ${t.weight == null ? 'weight unknown' : t.weight + '% of grade'}</div>
-      ${t.completed ? '<p><b style="color:var(--ok)">Completed</b></p>' : `
-      <p><b>${r ? `Priority #${r.rank} (score ${r.score})` : ''}</b></p>
-      <ul>${(r ? r.why : []).map((w) => `<li>${esc(w)}</li>`).join('')}</ul>
-      <p><b>Plan:</b> ${C.round(C.remaining({ ...t, scale: t.doneH > 0 ? 1 : current.ratio }), 1)}h left → ${sessions.length ? sessions.join(' · ') : 'not scheduled'}${fin != null ? ` · finishes ${C.fmtDay(fin)} (${early(C.toDay(t.due) - fin)})` : ''}</p>`}
-      ${t.notes && t.notes.length ? `<p><b>Dependencies:</b></p><ul>${t.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
-      <p><b>Evidence:</b> effort ${t.effortH}h (${esc(t.effortSource || 'entered')}), confidence ${esc(t.confidence)}</p>
-      ${t.source ? `<blockquote>${t.source.file ? `From ${esc(t.source.file)}, line` : 'Line'} ${t.source.line}: ${esc(t.source.text)}</blockquote>` : ''}
-      ${t.completed ? '' : `<div class="actions">
-        <button class="btn primary" data-act="done">Mark complete</button>
-        <button class="btn" data-act="log1">Did 1h</button>
-        <button class="btn warn" data-act="more2">It's bigger: +2h</button>
+      <div class="dr-head">${courseTile(t.course, 44)}<div><h3>${esc(t.title)}</h3><div class="dr-sub">${esc(courseName(t.course).name)} · ${esc((C.TYPES.find((x) => x.type === t.type) || {}).label || t.type)}</div></div></div>
+      <div class="dr-stats">
+        <div><b>${t.completed ? '✓' : f1(left) + 'h'}</b><span>${t.completed ? 'completed' : 'left'}</span></div>
+        <div><b>${dueRel}</b><span>due ${C.fmtDay(due).slice(4)}</span></div>
+        <div><b>${t.weight == null ? '–' : t.weight + '%'}</b><span>of grade</span></div>
+        <div><b>${r ? '#' + r.rank : '–'}</b><span>priority</span></div>
+      </div>
+      ${t.completed ? '' : `<div class="dr-sec"><div class="dr-k">Plan <span class="pillst ${status[1]}">${status[0]}</span></div>
+        ${sess.length ? `<div class="dr-sess">${sess.slice(0, 4).map((x) => `<span>${C.fmtDay(x.d).slice(0, 3)} ${C.fmtDay(x.d).slice(4)} · ${f1(x.h)}h</span>`).join('')}${sess.length > 4 ? `<span>+${sess.length - 4} more</span>` : ''}</div>` : '<div class="muted small">Not scheduled yet</div>'}
+        ${fin != null ? `<div class="dr-note">Finishes ${C.fmtDay(fin)} · ${early(due - fin)}</div>` : ''}</div>
+      ${r ? `<div class="dr-sec"><div class="dr-k">Why</div><div class="dr-note">${esc(r.why[0])}</div></div>` : ''}`}
+      ${t.source ? `<details class="dr-src"><summary>Source</summary><code>${t.source.file ? esc(t.source.file) + ' · ' : ''}line ${t.source.line}: ${esc(t.source.text)}</code><div class="muted small">effort ${t.effortH}h (${esc(t.effortSource || 'entered')}) · ${esc(t.confidence)} confidence${t.notes && t.notes.length ? ' · ' + esc(t.notes.join('; ')) : ''}</div></details>` : ''}
+      ${t.completed ? '' : `<div class="dr-actions">
+        <button class="btn primary" data-act="done">${ic('check')}Mark complete</button>
+        <button class="btn" data-act="log1">Log 1h</button>
+        <button class="btn" data-act="more2">Needs +2h</button>
       </div>`}`;
     $('drawer').hidden = false;
     $('drawerBody').querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => {
@@ -855,7 +862,7 @@
       const names = x.sessions.map((s) => ({ color: 'var(--viz-accent)', text: `${(taskById(s.id) || {}).title} · ${f1(s.hours)}h` }));
       x.dues.forEach((t) => names.push({ color: 'var(--text)', text: `Due: ${t.title}` }));
       tips.push({ value: `${f1(x.load)}h of ${f1(x.cap)}h`, label: C.fmtDay(x.d), rows: names });
-      svg += `<g class="col" ><path class="track" d="${colPath(bx, y(x.cap), bw, base)}"/><path class="fill" d="${colPath(bx, y(Math.min(x.load, maxY)), bw, base)}"/>`;
+      svg += `<g class="col" ><path class="track" d="${colPath(bx, y(x.cap), bw, base)}"/><path class="fill ${i === 0 ? 'now' : ''}" d="${colPath(bx, y(Math.min(x.load, maxY)), bw, base)}"/>`;
       svg += `<rect class="hit" x="${cx}" y="${T}" width="${band}" height="${H - T}" tabindex="0" data-ti="${i}" aria-label="${C.fmtDay(x.d)}: ${f1(x.load)} of ${f1(x.cap)} hours"/></g>`;
       if (x.dues.length) { const mx = cx + band / 2, my = base + 8; svg += `<path class="due-mark" d="M${mx},${my}l4.5,8h-9z"/>`; }
       if (i === 0) svg += `<text class="tick today-tick" x="${cx + band / 2}" y="${H - 6}" text-anchor="middle">Today</text>`;
@@ -870,16 +877,18 @@
     const act = state.activity || {};
     const hoursOn = (d) => (d < today ? +(act[C.fromDay(d)] || 0) : (byDay[d] ? byDay[d].load : 0));
     const lastActive = Math.max(last, today + 27);
-    const start = (today - 56) - ((C.weekday(today - 56) + 6) % 7); // Monday, 8 weeks back
     const end = lastActive + (6 - ((C.weekday(lastActive) + 6) % 7)); // through Sunday
-    const weeks = Math.round((end - start + 1) / 7);
     const mapBox = $('wlMap');
-    const availW = Math.max(300, mapBox.clientWidth || 700);
+    const availW = Math.max(280, mapBox.clientWidth || 700);
     const LBL = 34, TOP = 20, gap = 4;
-    const cell = Math.max(11, Math.min(22, Math.floor((availW - LBL) / weeks) - gap));
+    const needWeeks = Math.round((end - (today - ((C.weekday(today) + 6) % 7)) + 1) / 7) + 2;
+    // Fill the card: as many weeks as fit at a comfortable cell size (more history on wider screens)
+    const weeks = Math.max(needWeeks, Math.min(53, Math.floor((availW - LBL) / (18 + gap))));
+    const start = end - weeks * 7 + 1;
+    const cell = Math.max(10, Math.min(22, Math.floor((availW - LBL) / weeks) - gap));
     const MW = LBL + weeks * (cell + gap), MH = TOP + 7 * (cell + gap);
     const level = (h) => (h <= 0 ? 0 : h < 1.5 ? 1 : h < 3 ? 2 : h < 4.5 ? 3 : 4);
-    const FILL = ['var(--panel)', 'color-mix(in srgb, var(--viz-accent) 30%, var(--panel))', 'color-mix(in srgb, var(--viz-accent) 55%, var(--panel))', 'color-mix(in srgb, var(--viz-accent) 78%, var(--panel))', 'var(--viz-accent)'];
+    const FILL = ['var(--panel)', 'color-mix(in srgb, var(--viz-data) 28%, var(--panel))', 'color-mix(in srgb, var(--viz-data) 50%, var(--panel))', 'color-mix(in srgb, var(--viz-data) 74%, var(--panel))', 'var(--viz-data)'];
     let msvg = `<svg width="${MW}" height="${MH}" viewBox="0 0 ${MW} ${MH}" role="img" aria-label="Study hours per day, logged and planned">`;
     [['Mon', 0], ['Wed', 2], ['Fri', 4]].forEach(([t, r]) => { msvg += `<text class="lbl" x="0" y="${TOP + r * (cell + gap) + cell * 0.75}">${t}</text>`; });
     const mtips = [];
@@ -922,7 +931,7 @@
     const rows = Object.entries(per).sort((a, b) => b[1].h - a[1].h);
     const mx = Math.max(1, ...rows.map((r) => r[1].h));
     $('wlCourseSub').textContent = `${f1(rows.reduce((a, r) => a + r[1].h, 0))}h in total`;
-    $('wlCourses').innerHTML = rows.map(([c, v]) => `<div class="hb"><div class="hn">${courseTile(c, 22)}<span class="nm">${esc(courseName(c).name)}</span><span>${v.n} task${v.n > 1 ? 's' : ''}</span></div><div class="hv">${f1(v.h)}h</div><div class="ht"><i style="width:${(v.h / mx) * 100}%"></i></div></div>`).join('') || '<div class="muted small">No open tasks</div>';
+    $('wlCourses').innerHTML = rows.map(([c, v]) => `<div class="hb"><div class="hn">${courseTile(c, 22)}<span class="nm">${esc(courseName(c).name)}</span><span>${v.n} task${v.n > 1 ? 's' : ''}</span></div><div class="hv">${f1(v.h)}h</div><div class="ht"><i style="width:${(v.h / mx) * 100}%;background:${TILE_BG[courseIndex(c) % TILE_BG.length]}"></i></div></div>`).join('') || '<div class="muted small">No open tasks</div>';
   }
 
   /* ---------- Results (minimal) ---------- */
