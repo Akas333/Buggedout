@@ -198,40 +198,6 @@
   $('weekPrev').addEventListener('click', () => { viewDay = (viewDay || C.toDay(state.today)) - 7; renderCalendar(); });
   $('weekNext').addEventListener('click', () => { viewDay = (viewDay || C.toDay(state.today)) + 7; renderCalendar(); });
 
-  function renderPlan() {
-    const { plan, live } = current;
-    const today = C.toDay(state.today);
-    const dueByDay = {};
-    state.tasks.forEach((t) => { (dueByDay[C.toDay(t.due)] = dueByDay[C.toDay(t.due)] || []).push(t); });
-    const lastDay = Math.max(today + 13, ...plan.days.map((d) => d.day), ...live.map((t) => C.toDay(t.due)));
-    const start = today - ((C.weekday(today) + 6) % 7); // Monday of this week
-    const byDay = Object.fromEntries(plan.days.map((d) => [d.day, d]));
-    let html = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => `<div class="weekday-head">${d}</div>`).join('');
-    const end = lastDay + (6 - ((C.weekday(lastDay) + 6) % 7));
-    for (let d = start; d <= end; d++) {
-      if (d < today) { html += '<div class="day blank"></div>'; continue; }
-      const entry = byDay[d] || { cap: C.capacityOn(d, current.settings), load: 0, sessions: [] };
-      const pct = entry.cap ? Math.min(100, (entry.load / entry.cap) * 100) : 0;
-      const col = pct >= 90 ? 'var(--danger)' : pct >= 70 ? 'var(--warn)' : 'var(--accent)';
-      const dues = (dueByDay[d] || []).map((t) => {
-        const ok = t.completed || (plan.finish[t.id] != null && plan.finish[t.id] <= d && !plan.unfinished[t.id]);
-        return `<div class="due-chip ${ok ? 'done' : ''}" data-id="${t.id}" title="${esc(t.title)}">${esc(t.title)}</div>`;
-      }).join('');
-      const sess = entry.sessions.map((s) => {
-        const t = taskById(s.id);
-        return `<div class="sess" data-id="${s.id}" style="border-color:${courseColor(t.course)}"><b>${esc(t.title)}</b><span>${fmtH(s.hours)} · ${esc(shortCourse(t.course))}</span></div>`;
-      }).join('');
-      html += `<div class="day ${d === today ? 'today' : ''} ${entry.cap === 0 ? 'off' : ''}">
-        <div class="day-head"><span>${d === today ? 'Today' : C.fmtDay(d).slice(4)}</span><span class="cap">${C.round(entry.load, 1)}/${C.round(entry.cap, 1)}h</span></div>
-        <div class="loadbar"><i style="width:${pct}%;background:${col}"></i></div>${dues}${sess}</div>`;
-    }
-    $('planGrid').innerHTML = html;
-    $('planGrid').querySelectorAll('[data-id]').forEach((el) => el.addEventListener('click', () => openTask(el.dataset.id)));
-    const log = state.log;
-    $('changeLog').innerHTML = log ? `<div class="log"><button class="log-x" aria-label="Dismiss">${ic('x')}</button><strong>Plan updated</strong> · ${esc(log.title)}<ul>${log.items.slice(0, 3).map((i) => `<li>${esc(i)}</li>`).join('')}</ul>${log.items.length > 3 ? `<div class="muted small">+${log.items.length - 3} more change(s)</div>` : ''}</div>` : '';
-    const lx = $('changeLog').querySelector('.log-x');
-    if (lx) lx.addEventListener('click', () => { state.log = null; save(); $('changeLog').innerHTML = ''; });
-  }
   const fmtH = (h) => `${C.round(h, 1)}h`;
   const shortCourse = (c) => (c.match(/^[A-Z]{2,5}\s?\d{3,4}[A-Z]?/) || [c])[0];
 
@@ -483,7 +449,7 @@
     $('courseOptions').innerHTML = [...new Set(state.tasks.map((t) => t.course))].map((c) => `<option value="${esc(c)}">`).join('');
     $('fDep').innerHTML = '<option value="">Nothing</option>' + state.tasks.filter((t) => !t.completed).map((t) => `<option value="${t.id}">${esc(t.title)}</option>`).join('');
     $('fDue').min = state.today;
-    if (!$('fDue').value) $('fDue').value = C.fromDay(C.toDay(state.today) + 7);
+    if (!$('fDue').value || $('fDue').value < state.today) $('fDue').value = C.fromDay(C.toDay(state.today) + 7);
     setMode(mode);
     $('pasteModal').hidden = false;
     (mode === 'one' ? $('fTitle') : $('inputText')).focus();
@@ -515,6 +481,118 @@
   $('drawerClose').addEventListener('click', () => { $('drawer').hidden = true; });
   $('drawer').addEventListener('click', (e) => { if (e.target.id === 'drawer') $('drawer').hidden = true; });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('drawer').hidden = true; $('pasteModal').hidden = true; } });
+
+  /* ---------- Schedule tab: month / week / day calendar ---------- */
+  const PILL = [['#e0ecff', '#1d4ed8'], ['#fce7f3', '#be185d'], ['#e3f5e1', '#2f7d32'], ['#efe4ff', '#6d28d9'], ['#fff1d6', '#b45309'], ['#dff6f4', '#0f766e'], ['#ffe8e0', '#c2410c'], ['#eceef3', '#3f4756']];
+  const cal = { cursor: null, view: 'month', hidden: new Set(), q: '' };
+  const coursePill = (course) => PILL[Math.max(0, [...new Set(state.tasks.map((t) => t.course))].indexOf(course)) % PILL.length];
+  const DAYMS = 86400000;
+  const monthStart = (d) => { const x = new Date(d * DAYMS); return Math.round(Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), 1) / DAYMS); };
+  const monthTitle = (d, withYear = true) => new Date(d * DAYMS).toLocaleString('en', { month: 'long', year: withYear ? 'numeric' : undefined, timeZone: 'UTC' });
+  const addMonths = (d, n) => { const x = new Date(d * DAYMS); return Math.round(Date.UTC(x.getUTCFullYear(), x.getUTCMonth() + n, 1) / DAYMS); };
+
+  function eventsByDay() {
+    const { plan } = current;
+    const ev = {};
+    const visible = (t) => !cal.hidden.has(t.course) && (!cal.q || `${t.title} ${t.course}`.toLowerCase().includes(cal.q));
+    const push = (d, e) => { (ev[d] = ev[d] || []).push(e); };
+    state.tasks.forEach((t) => {
+      if (!visible(t)) return;
+      const d = C.toDay(t.due);
+      const ok = t.completed || (plan.finish[t.id] != null && plan.finish[t.id] <= d && !plan.unfinished[t.id]);
+      push(d, { kind: 'due', t, ok });
+    });
+    plan.days.forEach((day) => {
+      let h = startHour(day.day);
+      day.sessions.forEach((s) => {
+        const t = taskById(s.id);
+        if (t && visible(t)) push(day.day, { kind: 'study', t, hours: s.hours, from: h });
+        h += s.hours + 0.25;
+      });
+    });
+    return ev;
+  }
+
+  function pillHtml(e, withTime) {
+    if (e.kind === 'due') return `<div class="pill due ${e.ok ? 'ok' : ''}" data-id="${e.t.id}" title="Due: ${esc(e.t.title)}"><span>Due · ${esc(e.t.title)}</span></div>`;
+    const [bg, fg] = coursePill(e.t.course);
+    return `<div class="pill" style="--bg-c:${bg};--fg-c:${fg}" data-id="${e.t.id}" title="${esc(e.t.title)} · ${C.round(e.hours, 1)}h"><span>${withTime ? `<span class="t">${clock(e.from)} – ${clock(e.from + e.hours)}</span>` : ''}${esc(e.t.title)}${withTime ? '' : ` · ${C.round(e.hours, 1)}h`}</span></div>`;
+  }
+
+  function renderPlan() {
+    const today = C.toDay(state.today);
+    if (cal.cursor == null) cal.cursor = today;
+    const ev = eventsByDay();
+    // Change log on Home
+    const log = state.log;
+    $('changeLog').innerHTML = log ? `<div class="log"><button class="log-x" aria-label="Dismiss">${ic('x')}</button><strong>Plan updated</strong> · ${esc(log.title)}<ul>${log.items.slice(0, 3).map((i) => `<li>${esc(i)}</li>`).join('')}</ul>${log.items.length > 3 ? `<div class="muted small">+${log.items.length - 3} more change(s)</div>` : ''}</div>` : '';
+    const lx = $('changeLog').querySelector('.log-x');
+    if (lx) lx.addEventListener('click', () => { state.log = null; save(); $('changeLog').innerHTML = ''; });
+
+    // Sidebar: mini month
+    const ms = monthStart(cal.cursor);
+    $('miniTitle').textContent = monthTitle(ms, false);
+    const gridStart = ms - C.weekday(ms);
+    let mini = ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d) => `<div class="wd">${d}</div>`).join('');
+    for (let d = gridStart; d < gridStart + 42; d++) {
+      const out = monthStart(d) !== ms;
+      mini += `<button type="button" data-d="${d}" class="${out ? 'out' : ''} ${d === today ? 'today' : ''} ${d === cal.cursor ? 'sel' : ''} ${ev[d] && !out ? 'has' : ''}">${new Date(d * DAYMS).getUTCDate()}</button>`;
+    }
+    $('miniCal').innerHTML = mini;
+    $('miniCal').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { cal.cursor = +b.dataset.d; renderPlan(); }));
+
+    // Sidebar: course filters
+    const courses = [...new Set(state.tasks.map((t) => t.course))];
+    $('courseFilters').innerHTML = courses.map((c) => `<label class="cfilter" style="--c:${coursePill(c)[1]}"><input type="checkbox" data-c="${esc(c)}" ${cal.hidden.has(c) ? '' : 'checked'}>${esc(courseName(c).name)}</label>`).join('') || '<div class="muted small">No courses yet</div>';
+    $('courseFilters').querySelectorAll('input').forEach((i) => i.addEventListener('change', () => { if (i.checked) cal.hidden.delete(i.dataset.c); else cal.hidden.add(i.dataset.c); renderPlan(); }));
+
+    // Main view
+    document.querySelectorAll('#calView button').forEach((b) => b.classList.toggle('active', b.dataset.v === cal.view));
+    let html = '';
+    const cell = (d, opts) => {
+      const list = (ev[d] || []).sort((a, b) => (a.kind === 'due' ? -1 : 0) - (b.kind === 'due' ? -1 : 0) || (a.from || 0) - (b.from || 0));
+      const max = opts.max || 3;
+      const shown = list.slice(0, max).map((e) => pillHtml(e, opts.time)).join('');
+      const more = list.length > max ? `<div class="more-n">+${list.length - max} more</div>` : '';
+      return `<div class="mcell ${opts.out ? 'out' : ''} ${d < today ? 'past' : ''} ${d === today ? 'today' : ''} ${d === cal.cursor ? 'sel' : ''}" data-d="${d}"><div class="num">${new Date(d * DAYMS).getUTCDate()}</div>${shown}${more}</div>`;
+    };
+    const heads = C.WD.map((w) => `<div class="head">${w}</div>`).join('');
+    if (cal.view === 'month') {
+      $('calTitle').textContent = monthTitle(ms);
+      const rows = Math.ceil((C.weekday(ms) + new Date(Date.UTC(new Date(ms * DAYMS).getUTCFullYear(), new Date(ms * DAYMS).getUTCMonth() + 1, 0)).getUTCDate()) / 7);
+      html = `<div class="mgrid">${heads}`;
+      for (let d = gridStart; d < gridStart + rows * 7; d++) html += cell(d, { out: monthStart(d) !== ms });
+      html += '</div>';
+    } else if (cal.view === 'week') {
+      const ws = cal.cursor - C.weekday(cal.cursor);
+      $('calTitle').textContent = `${C.fmtDay(ws).slice(4)} – ${C.fmtDay(ws + 6).slice(4)}`;
+      html = `<div class="mgrid wgrid">${heads}`;
+      for (let d = ws; d < ws + 7; d++) html += cell(d, { time: true, max: 12 });
+      html += '</div>';
+    } else {
+      $('calTitle').textContent = C.fmtDay(cal.cursor);
+      const list = ev[cal.cursor] || [];
+      html = `<div class="dayview">${list.length ? list.map((e) => e.kind === 'due'
+        ? `<div class="slot due ${e.ok ? 'ok' : ''}" data-id="${e.t.id}"><div class="badge">${ic(e.ok ? 'check' : 'flag')}${e.ok ? 'Ready' : 'Due'}</div><div><div class="title">${esc(e.t.title)}</div><div class="sub">${esc(courseName(e.t.course).name)}</div></div></div>`
+        : `<div class="slot" data-id="${e.t.id}"><div class="time"><span style="color:${coursePill(e.t.course)[1]};display:inline-flex">${ic('clock')}</span>${clock(e.from)} - ${clock(e.from + e.hours)}</div><div class="title">${esc(e.t.title)}</div><div class="sub">${esc(courseName(e.t.course).name)} · ${C.round(e.hours, 1)}h</div></div>`).join('')
+        : `<div class="empty-day">${ic('coffee')}Nothing planned for this day</div>`}</div>`;
+    }
+    $('calGrid').innerHTML = html;
+    $('calGrid').querySelectorAll('[data-id]').forEach((el) => el.addEventListener('click', (e) => { e.stopPropagation(); openTask(el.dataset.id); }));
+    $('calGrid').querySelectorAll('.mcell').forEach((el) => el.addEventListener('click', () => {
+      const d = +el.dataset.d;
+      if (d >= today) { $('fDue').value = C.fromDay(d); openNew('one'); } else { cal.cursor = d; renderPlan(); }
+    }));
+  }
+  $('calView').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { cal.view = b.dataset.v; renderPlan(); } });
+  $('calToday').addEventListener('click', () => { cal.cursor = C.toDay(state.today); renderPlan(); });
+  const step = (n) => { cal.cursor = cal.view === 'month' ? addMonths(cal.cursor, n) : cal.cursor + n * (cal.view === 'week' ? 7 : 1); renderPlan(); };
+  $('calPrev').addEventListener('click', () => step(-1));
+  $('calNext').addEventListener('click', () => step(1));
+  $('miniPrev').addEventListener('click', () => { cal.cursor = addMonths(cal.cursor, -1); renderPlan(); });
+  $('miniNext').addEventListener('click', () => { cal.cursor = addMonths(cal.cursor, 1); renderPlan(); });
+  $('calSearch').addEventListener('input', (e) => { cal.q = e.target.value.trim().toLowerCase(); renderPlan(); });
+  $('btnNewCal').addEventListener('click', () => openNew('one'));
 
   render();
 })();

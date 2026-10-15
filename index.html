@@ -30,6 +30,7 @@
     <symbol id="i-coffee" viewBox="0 0 24 24"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><path d="M6 2v2M10 2v2M14 2v2"/></symbol>
     <symbol id="i-trend" viewBox="0 0 24 24"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></symbol>
     <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
     <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4M10 9H8M16 13H8M16 17H8"/></symbol>
   </defs>
@@ -120,9 +121,38 @@
   </div>
 </main>
 
-<main class="tab page" id="tab-plan">
-  <div class="page-head"><h2>Schedule</h2><span class="muted small" id="planMeta"></span></div>
-  <div class="week-grid" id="planGrid"></div>
+<main class="tab" id="tab-plan">
+  <div class="cal">
+    <aside class="cal-side">
+      <h2 class="cal-h">Calendar</h2>
+      <label class="search"><svg class="i"><use href="#i-search"/></svg><input id="calSearch" type="search" placeholder="Search tasks…" aria-label="Search tasks"></label>
+      <div class="mini-head">
+        <button class="icon-btn sm ghosty" id="miniPrev" aria-label="Previous month"><svg class="i"><use href="#i-left"/></svg></button>
+        <strong id="miniTitle"></strong>
+        <button class="icon-btn sm ghosty" id="miniNext" aria-label="Next month"><svg class="i"><use href="#i-right"/></svg></button>
+      </div>
+      <div class="mini" id="miniCal"></div>
+      <h4 class="side-h">My courses</h4>
+      <div id="courseFilters"></div>
+      <button class="btn primary wide" id="btnNewCal"><svg class="i"><use href="#i-plus"/></svg>New deadline</button>
+    </aside>
+    <section class="cal-main">
+      <div class="cal-top">
+        <h2 id="calTitle"></h2>
+        <button class="btn small" id="calToday">Today</button>
+        <button class="icon-btn sm ghosty" id="calPrev" aria-label="Previous"><svg class="i"><use href="#i-left"/></svg></button>
+        <button class="icon-btn sm ghosty" id="calNext" aria-label="Next"><svg class="i"><use href="#i-right"/></svg></button>
+        <span class="spacer"></span>
+        <span class="muted small cal-meta" id="planMeta"></span>
+        <div class="seg view-seg" id="calView">
+          <button data-v="day" type="button">Day</button>
+          <button data-v="week" type="button">Week</button>
+          <button data-v="month" type="button" class="active">Month</button>
+        </div>
+      </div>
+      <div id="calGrid"></div>
+    </section>
+  </div>
 </main>
 
 <main class="tab page" id="tab-priorities">
