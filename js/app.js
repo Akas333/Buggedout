@@ -20,7 +20,8 @@
     if (started) { started.doneH = 2; started.started = true; }
     const finished = tasks.find((t) => /Lab experiment 5/.test(t.title));
     if (finished) { finished.completed = true; finished.doneH = finished.effortH; }
-    return { today: S.today, text: S.text, tasks, ignored, settings: JSON.parse(JSON.stringify({ ...S.settings, prior: 1 })), log: null, nextId: tasks.length + 1 };
+    const activity = { '2026-10-13': finished ? finished.effortH : 0, '2026-10-14': started ? 2 : 0 };
+    return { activity, today: S.today, text: S.text, tasks, ignored, settings: JSON.parse(JSON.stringify({ ...S.settings, prior: 1 })), log: null, nextId: tasks.length + 1 };
   }
   function loadState() { try { const s = JSON.parse(localStorage.getItem(KEY)); return s && s.tasks ? s : null; } catch (e) { return null; } }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable: still works in-memory */ } }
@@ -287,7 +288,7 @@
     $('drawerBody').querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => {
       const before = snapshot();
       if (b.dataset.act === 'done') { t.effortH = Math.max(t.doneH, 0.5); t.doneH = t.effortH; t.completed = true; replanLog(before, `"${t.title}" marked complete`); }
-      if (b.dataset.act === 'log1') { t.doneH += 1; if (t.doneH >= t.effortH) t.completed = true; replanLog(before, `Logged 1h on "${t.title}"`); }
+      if (b.dataset.act === 'log1') { state.activity = state.activity || {}; state.activity[state.today] = (state.activity[state.today] || 0) + 1; t.doneH += 1; if (t.doneH >= t.effortH) t.completed = true; replanLog(before, `Logged 1h on "${t.title}"`); }
       if (b.dataset.act === 'more2') { t.effortH += 2; replanLog(before, `"${t.title}" needs 2h more than estimated`); }
       $('drawer').hidden = true;
       render();
@@ -323,6 +324,7 @@
       hours += s.hours;
       if (t.doneH >= t.effortH * (current.tasks.find((x) => x.id === t.id).scale || 1) - 0.01) { t.effortH = t.doneH; t.completed = true; }
     });
+    if (hours > 0) { state.activity = state.activity || {}; state.activity[state.today] = C.round((state.activity[state.today] || 0) + hours, 2); }
     state.today = C.fromDay(today + 1);
     selDay = viewDay = today + 1;
     replanLog(before, didWork ? `Logged ${C.round(hours, 1)}h from today. Moving to ${C.fmtDay(today + 1)}` : `Skipped ${C.fmtDay(today)}. Redistributing the work`);
@@ -723,26 +725,55 @@
     bindTips(box, tips);
     $('wlDailyTable').innerHTML = `<table><thead><tr><th>Day</th><th>Planned (h)</th><th>Free (h)</th><th>Deadlines</th></tr></thead><tbody>${days.map((x) => `<tr><td>${C.fmtDay(x.d)}</td><td>${f1(x.load)}</td><td>${f1(x.cap)}</td><td>${x.dues.length || ''}</td></tr>`).join('')}</tbody></table>`;
 
-    // Week-by-week heat grid (one hue, light to dark)
-    const mon0 = today - ((C.weekday(today) + 6) % 7);
-    let heat = `<div class="heat"><div></div>${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => `<div class="hd">${d}</div>`).join('')}<div class="hd" style="text-align:right">Total</div>`;
-    const htips = [];
-    for (let w = mon0; w <= last; w += 7) {
-      let tl = 0, tc = 0;
-      let cells = '';
-      for (let d = w; d < w + 7; d++) {
-        const x = days.find((k) => k.d === d);
-        if (!x) { cells += `<div class="cell empty"></div>`; continue; }
-        tl += x.load; tc += x.cap;
-        const p = x.cap ? Math.min(1, x.load / x.cap) : 0;
-        const pct = Math.round(p * 85);
-        htips.push({ value: x.cap ? `${Math.round(p * 100)}% of free time` : 'No free time', label: `${C.fmtDay(d)} · ${f1(x.load)}h planned`, rows: x.dues.map((t) => ({ color: 'var(--text)', text: `Due: ${t.title}` })) });
-        cells += `<div class="cell ${pct > 50 ? 'ink' : ''}" style="background:color-mix(in srgb, var(--viz-accent) ${pct}%, var(--panel))" tabindex="0" data-ti="${htips.length - 1}" aria-label="${C.fmtDay(d)}: ${f1(x.load)} of ${f1(x.cap)} hours"><span class="d">${new Date(d * 86400000).getUTCDate()}</span>${x.dues.length ? '<i class="flag"></i>' : ''}</div>`;
+    // Study activity map: weeks as columns, Mon..Sun as rows. Logged hours before today, planned from today.
+    const act = state.activity || {};
+    const hoursOn = (d) => (d < today ? +(act[C.fromDay(d)] || 0) : (byDay[d] ? byDay[d].load : 0));
+    const lastActive = Math.max(last, today + 27);
+    const start = (today - 56) - ((C.weekday(today - 56) + 6) % 7); // Monday, 8 weeks back
+    const end = lastActive + (6 - ((C.weekday(lastActive) + 6) % 7)); // through Sunday
+    const weeks = Math.round((end - start + 1) / 7);
+    const mapBox = $('wlMap');
+    const availW = Math.max(300, mapBox.clientWidth || 700);
+    const LBL = 34, TOP = 20, gap = 4;
+    const cell = Math.max(11, Math.min(22, Math.floor((availW - LBL) / weeks) - gap));
+    const MW = LBL + weeks * (cell + gap), MH = TOP + 7 * (cell + gap);
+    const level = (h) => (h <= 0 ? 0 : h < 1.5 ? 1 : h < 3 ? 2 : h < 4.5 ? 3 : 4);
+    const FILL = ['var(--panel)', 'color-mix(in srgb, var(--viz-accent) 30%, var(--panel))', 'color-mix(in srgb, var(--viz-accent) 55%, var(--panel))', 'color-mix(in srgb, var(--viz-accent) 78%, var(--panel))', 'var(--viz-accent)'];
+    let msvg = `<svg width="${MW}" height="${MH}" viewBox="0 0 ${MW} ${MH}" role="img" aria-label="Study hours per day, logged and planned">`;
+    [['Mon', 0], ['Wed', 2], ['Fri', 4]].forEach(([t, r]) => { msvg += `<text class="lbl" x="0" y="${TOP + r * (cell + gap) + cell * 0.75}">${t}</text>`; });
+    const mtips = [];
+    let lastMonth = -1, total = 0, activeDays = 0, run = 0, best = 0, bestWeek = { h: 0, d: start };
+    for (let w = 0; w < weeks; w++) {
+      const x = LBL + w * (cell + gap);
+      const wkStart = start + w * 7;
+      const m = new Date(wkStart * 86400000).getUTCMonth();
+      if (m !== lastMonth && (w === 0 || new Date((wkStart) * 86400000).getUTCDate() <= 7)) {
+        msvg += `<text class="lbl" x="${x}" y="12">${new Date(wkStart * 86400000).toLocaleString('en', { month: 'short', timeZone: 'UTC' })}</text>`;
+        lastMonth = m;
       }
-      heat += `<div class="wk">${C.fmtDay(w).slice(4)}</div>${cells}<div class="tot">${f1(tl)}h<span>of ${f1(tc)}h</span></div>`;
+      let wh = 0;
+      for (let r = 0; r < 7; r++) {
+        const d = wkStart + r;
+        const h = d <= lastActive ? hoursOn(d) : 0;
+        wh += h;
+        if (h > 0) { total += h; activeDays += 1; run += 1; best = Math.max(best, run); } else { run = 0; }
+        const dues = state.tasks.filter((t) => C.toDay(t.due) === d);
+        mtips.push({ value: h > 0 ? `${f1(h)}h ${d < today ? 'logged' : 'planned'}` : d < today ? 'Nothing logged' : 'Nothing planned', label: C.fmtDay(d) + (d === today ? ' · today' : ''), rows: dues.map((t) => ({ color: 'var(--text)', text: `Due: ${t.title}` })) });
+        msvg += `<rect class="c ${d === today ? 'today' : ''}" x="${x}" y="${TOP + r * (cell + gap)}" width="${cell}" height="${cell}" rx="3" style="fill:${FILL[level(h)]}" tabindex="0" data-ti="${mtips.length - 1}"/>`;
+      }
+      if (wh > bestWeek.h) bestWeek = { h: wh, d: wkStart };
     }
-    $('wlHeat').innerHTML = heat + '</div>';
-    bindTips($('wlHeat'), htips);
+    mapBox.innerHTML = msvg + '</svg>';
+    bindTips(mapBox, mtips);
+    const loggedH = Object.entries(act).filter(([k]) => C.toDay(k) < today).reduce((a, [, v]) => a + +v, 0);
+    $('mapTitle').textContent = `${f1(total)}h of study across ${activeDays} days`;
+    $('wlMapSide').innerHTML = `
+      <div class="ms"><b>${f1(loggedH)}h</b><span>logged so far</span></div>
+      <div class="ms"><b>${best} days</b><span>longest study streak</span></div>
+      <div class="ms"><b>${f1(bestWeek.h)}h</b><span>busiest week · ${C.fmtDay(bestWeek.d).slice(4)}</span></div>`;
+    const actRows = [];
+    for (let d = start; d <= lastActive; d++) { const h = hoursOn(d); if (h > 0) actRows.push(`<tr><td>${C.fmtDay(d)}</td><td>${f1(h)}</td><td>${d < today ? 'logged' : 'planned'}</td></tr>`); }
+    $('wlMapTable').innerHTML = `<table><thead><tr><th>Day</th><th>Hours</th><th>Type</th></tr></thead><tbody>${actRows.join('')}</tbody></table>`;
 
     // Hours left by course (single series)
     const per = {};
