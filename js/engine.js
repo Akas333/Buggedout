@@ -8,7 +8,8 @@
   const DAY = 86400000;
   const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const MONTH_RE = 'jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec';
+  // Whole month words only, so "Octave" or "Marks" are not read as months.
+  const MONTH_RE = 'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
 
   const toDay = (iso) => { const [y, m, d] = iso.slice(0, 10).split('-').map(Number); return Math.round(Date.UTC(y, m - 1, d) / DAY); };
   const fromDay = (n) => new Date(n * DAY).toISOString().slice(0, 10);
@@ -44,15 +45,20 @@
       return { day: Math.round(Date.UTC(y, m, d) / DAY), confidence: conf, text };
     };
     let m;
-    if ((m = s.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/))) return mk(+m[1], +m[2] - 1, +m[3], 'high', m[0]);
-    if ((m = s.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MONTH_RE})[a-z]*\\.?(?:,?\\s+(\\d{4}))?`)))) {
+    const fullYear = (y) => (y < 100 ? y + 2000 : y);
+    if ((m = s.match(/\b(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})\b/))) return mk(+m[1], +m[2] - 1, +m[3], 'high', m[0]);
+    // "20 Oct", "20th October 2026", "20-Oct-2026" (VTOP), "20-Oct-26"
+    if ((m = s.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+|\\s*-\\s*)(?:of\\s+)?(${MONTH_RE})\\b\\.?(?:,?\\s+(\\d{4})\\b|-(\\d{2}|\\d{4})\\b)?`)))) {
       const mo = MON.findIndex((x) => m[2].startsWith(x.toLowerCase()));
-      return mk(m[3] ? +m[3] : pickYear(mo, +m[1]), mo, +m[1], 'high', m[0]);
+      const y = m[3] || m[4];
+      return mk(y ? fullYear(+y) : pickYear(mo, +m[1]), mo, +m[1], 'high', m[0]);
     }
-    if ((m = s.match(new RegExp(`\\b(${MONTH_RE})[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`)))) {
+    if ((m = s.match(new RegExp(`\\b(${MONTH_RE})\\b\\.?[\\s-]+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`)))) {
       const mo = MON.findIndex((x) => m[1].startsWith(x.toLowerCase()));
       return mk(m[3] ? +m[3] : pickYear(mo, +m[2]), mo, +m[2], 'high', m[0]);
     }
+    // dd-mm-yyyy needs the year, so ranges like "Modules 1-3" are not read as dates.
+    if ((m = s.match(/\b(\d{1,2})-(\d{1,2})-(\d{4}|\d{2})\b/))) return mk(fullYear(+m[3]), +m[2] - 1, +m[1], 'high', m[0]);
     if ((m = s.match(/\b(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{2,4}))?\b/))) {
       // Indian format: dd/mm(/yyyy)
       let y = m[3] ? +m[3] : pickYear(+m[2] - 1, +m[1]);
@@ -72,15 +78,19 @@
   }
 
   const COURSE_RE = /\b([A-Z]{2,5}\s?\d{3,4}[A-Z]?)\b/;
+  const SOURCE_RE = /^-{3}\s*from\s+(.+?)\s*-{3}$/i;
 
   function extractTasks(text, startIso) {
     const startDay = toDay(startIso);
     const tasks = [], ignored = [];
-    let course = 'General';
+    let course = 'General', file = null;
     const lines = text.split(/\r?\n/);
     lines.forEach((raw, idx) => {
       const line = raw.trim();
       if (!line) return;
+      // "--- from timetable.png (OCR) ---" starts a new imported document.
+      const marker = line.match(SOURCE_RE);
+      if (marker) { file = marker[1]; course = 'General'; return; }
       const date = parseDate(line, startDay);
       const typeHit = TYPES.find((t) => t.re.test(line));
       const code = line.match(COURSE_RE);
@@ -89,14 +99,15 @@
         course = line.replace(/^(course|subject)\s*[:\-]\s*/i, '').replace(/[:\-–]+\s*$/, '').trim().slice(0, 48);
         return;
       }
-      if (!date) { ignored.push({ line: idx + 1, text: line, why: 'no date found' }); return; }
-      if (!typeHit && !/\b(due|deadline|submit|submission|exam|test)\b/i.test(line)) {
-        ignored.push({ line: idx + 1, text: line, why: 'date found but no task keyword' }); return;
+      if (!date) { ignored.push({ line: idx + 1, text: line, why: 'no date found', file }); return; }
+      if (!typeHit && !/\b(due|deadline|submit|submission|exam(ination)?s?|tests?|assessments?)\b/i.test(line)) {
+        ignored.push({ line: idx + 1, text: line, why: 'date found but no task keyword', file }); return;
       }
       const type = typeHit ? typeHit.type : 'assignment';
       const effM = line.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hours?)\b(?!\s*(?:am|pm))/i);
       const wM = line.match(/(\d{1,2}(?:\.\d+)?)\s*%/) || line.match(/(\d{1,3})\s*marks\b/i);
       let title = line
+        .replace(/\s*[|\t]+\s*/g, ' ')
         .replace(/,?\s*\b(builds on|based on|after|requires?|using|depends on)\s+[^,(]+/i, '')
         .replace(date.text ? new RegExp(date.text.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&'), 'i') : /$^/, '')
         .replace(/\(?\s*\d+(?:\.\d+)?\s*%\s*\)?/g, '')
@@ -123,7 +134,7 @@
         doneH: 0,
         weight: wM ? Math.min(100, +wM[1]) : null,
         deps: [],
-        source: { line: idx + 1, text: line },
+        source: file ? { line: idx + 1, text: line, file } : { line: idx + 1, text: line },
         confidence: typeHit ? date.confidence : 'low',
         effortSource: effM ? 'stated in text' : `default for ${typeInfo(type).label.toLowerCase()}`,
         notes: [],

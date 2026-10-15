@@ -81,7 +81,10 @@
       `<div class="commit"><span>${esc(C.fmtDay(C.toDay(c.date)))} · ${c.hours}h · ${esc(c.label || 'busy')}</span><button data-i="${i}" aria-label="Remove">×</button></div>`).join('') || '<div class="hint">None yet</div>';
     $('commitList').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { state.settings.commitments.splice(+b.dataset.i, 1); render(); }));
     const n = state.tasks.length;
-    $('extractInfo').innerHTML = n ? `Found <b>${n}</b> tasks · ${state.ignored.length} line(s) skipped (see Tasks tab)` : '';
+    const lines = (state.text || '').split(/\r?\n/).filter((l) => l.trim()).length;
+    $('extractInfo').innerHTML = !n ? '' : lines
+      ? `<span class="st"><b>${lines}</b> lines</span><span class="arrow">→</span><span class="st"><b>${n}</b> deadlines</span><span class="st"><b>${state.ignored.length}</b> skipped</span>`
+      : `<span class="st"><b>${n}</b> deadlines added</span>`;
   }
 
   function renderKpis() {
@@ -110,6 +113,7 @@
     ring += `</svg><div class="pct"><b>${live.length - atRisk.length}<small>/${live.length}</small></b><span>on track</span></div>`;
     $('healthRing').innerHTML = ring;
     bindTips($('healthRing'), ringTips);
+    renderRadar();
     $('healthLabel').innerHTML = `<div class="level">${atRisk.length ? `<i class="risk-dot"></i>${atRisk.length} deadline${atRisk.length > 1 ? 's' : ''} at risk` : 'Every deadline fits your free time'}</div>`;
     $('bellDot').hidden = !atRisk.length;
     $('bellBtn').title = atRisk.length ? `At risk: ${atRisk.map((t) => t.title).join(', ')}` : 'No deadlines at risk';
@@ -166,6 +170,10 @@
     '<svg width="44" height="44" viewBox="0 0 44 44" fill="#111"><circle cx="22" cy="10" r="9"/><circle cx="22" cy="34" r="9"/><circle cx="10" cy="22" r="9"/><circle cx="34" cy="22" r="9"/><circle cx="22" cy="22" r="8"/></svg>',
     '<svg width="44" height="44" viewBox="0 0 44 44" fill="#111"><path d="M22 2l20 20-20 20L2 22z"/></svg>',
   ];
+  // A course's identity everywhere: the same pastel tile and black shape as its card on Home.
+  const courseIndex = (course) => Math.max(0, [...new Set(state.tasks.map((t) => t.course))].indexOf(course));
+  const courseTile = (course, size = 28) => { const i = courseIndex(course); return `<span class="ctile" style="--s:${size}px;background:${TILE_BG[i % TILE_BG.length]}" title="${esc(courseName(course).name)}" aria-hidden="true">${SHAPES[i % SHAPES.length]}</span>`; };
+  const decoTile = (i, size = 34) => `<span class="ctile deco" style="--s:${size}px;background:${TILE_BG[i % TILE_BG.length]}" aria-hidden="true">${SHAPES[i % SHAPES.length]}</span>`;
   const clockIcon = (c) => `<svg width="13" height="13" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="${c}"/><path d="M12 6v6l4 2" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>`;
   function openCourse(c) {
     const ts = state.tasks.filter((t) => t.course === c).sort((a, b) => a.due.localeCompare(b.due));
@@ -207,7 +215,7 @@
     (entry ? entry.sessions : []).forEach((s) => {
       const t = taskById(s.id);
       const color = TILE_BG[[...new Set(state.tasks.map((x) => x.course))].indexOf(t.course) % TILE_BG.length];
-      html += `<div class="slot" data-id="${t.id}"><button class="more" aria-hidden="true" tabindex="-1">${ic('more')}</button><div class="time"><span style="color:${color === '#f2b8b5' ? '#e5484d' : color};display:inline-flex">${ic('clock')}</span>${clock(h)} - ${clock(h + s.hours)}</div>
+      html += `<div class="slot" data-id="${t.id}"><button class="more" aria-hidden="true" tabindex="-1">${ic('more')}</button><div class="time">${courseTile(t.course, 20)}${clock(h)} - ${clock(h + s.hours)}</div>
         <div class="title">${esc(t.title)}</div><div class="sub">${esc(courseName(t.course).name)} · ${C.round(s.hours, 1)}h</div></div>`;
       h += s.hours + 0.25;
     });
@@ -222,20 +230,87 @@
   const shortCourse = (c) => (c.match(/^[A-Z]{2,5}\s?\d{3,4}[A-Z]?/) || [c])[0];
 
   function renderPrio() {
-    const { prio } = current;
+    const { prio, plan } = current;
+    const today = C.toDay(state.today);
+    const rel = (d) => (d - today < 0 ? `${today - d}d overdue` : d === today ? 'today' : d - today === 1 ? 'tomorrow' : `in ${d - today} days`);
+    const isRisk = (t) => plan.unfinished[t.id] || plan.finish[t.id] == null || plan.finish[t.id] > C.toDay(t.due);
+    const left = (t) => C.remaining({ ...t, scale: t.doneH > 0 ? 1 : current.ratio });
+    if (!prio.length) {
+      $('upNext').innerHTML = '<div class="empty">No open tasks. Add a deadline to get a plan.</div>';
+      $('matrix').innerHTML = ''; $('prioList').innerHTML = '';
+      return;
+    }
+
+    // Up next: the #1 task, numbers first
+    const top = prio[0], tt = taskById(top.id), due0 = C.toDay(tt.due);
+    $('upNext').innerHTML = `
+      <div class="un-tile">${courseTile(tt.course, 64)}</div>
+      <div class="un-k">Up next</div>
+      <h3>${esc(tt.title)}</h3>
+      <div class="muted small">${esc(courseName(tt.course).name)} · due ${C.fmtDay(due0)} · ${rel(due0)}</div>
+      <div class="un-stats">
+        <div><b>${f1(left(tt))}h</b><span>of work left</span></div>
+        <div><b>${Math.min(999, Math.round(top.pressure * 100))}%</b><span>of free time before it's due</span></div>
+        <div><b>${tt.weight == null ? '–' : tt.weight + '%'}</b><span>of the grade</span></div>
+        <div><b>${Math.round(top.score)}</b><span>priority score</span></div>
+      </div>
+      <div class="un-why">${ic('trend')}<span>${esc(top.why[0])}</span></div>
+      <div class="actions"><button class="btn primary small" id="unOpen">Open task</button><button class="btn small" id="unPlan">See schedule</button></div>`;
+    $('unOpen').addEventListener('click', () => openTask(top.id));
+    $('unPlan').addEventListener('click', () => document.querySelector('#tabs [data-tab=plan]').click());
+
+    // Urgency vs importance matrix
+    const box = $('matrix');
+    const W = Math.max(320, box.clientWidth || 640), H = 270, L = 44, R = 14, T = 12, B = 36;
+    const items = prio.map((r) => { const t = taskById(r.id); return { r, t, days: Math.max(0, C.toDay(t.due) - today), w: t.weight == null ? 10 : t.weight, assumed: t.weight == null, h: left(t), risk: isRisk(t) }; });
+    const maxD = Math.max(14, Math.ceil(Math.max(...items.map((i) => i.days)) / 7) * 7);
+    const maxW = Math.max(20, Math.ceil(Math.max(...items.map((i) => i.w)) / 5) * 5);
+    const x = (d) => L + (d / maxD) * (W - L - R);
+    const y = (w) => T + (1 - w / maxW) * (H - T - B);
+    const xs = x(Math.min(7, maxD)), ys = y(Math.min(10, maxW));
+    let svg = `<svg class="viz-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Tasks by days left and grade weight">`;
+    svg += `<rect x="${L}" y="${T}" width="${xs - L}" height="${ys - T}" style="fill:var(--accent-soft)" rx="6"/>`;
+    for (let d = 0; d <= maxD; d += 7) svg += `<line class="grid" x1="${x(d)}" x2="${x(d)}" y1="${T}" y2="${H - B}"/><text class="tick" x="${x(d)}" y="${H - B + 16}" text-anchor="middle">${d === 0 ? 'now' : d + 'd'}</text>`;
+    for (let w = 0; w <= maxW; w += 5) svg += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(w)}" y2="${y(w)}"/><text class="tick" x="${L - 8}" y="${y(w) + 4}" text-anchor="end">${w}%</text>`;
+    svg += `<line x1="${xs}" x2="${xs}" y1="${T}" y2="${H - B}" stroke="var(--faint)" stroke-width="1.5"/><line x1="${L}" x2="${W - R}" y1="${ys}" y2="${ys}" stroke="var(--faint)" stroke-width="1.5"/>`;
+    svg += `<text class="q" x="${L + 8}" y="${T + 16}" fill="var(--accent-text)">Do first</text>`;
+    svg += `<text class="q" x="${W - R - 8}" y="${T + 16}" text-anchor="end" fill="var(--muted)">Plan ahead</text>`;
+    svg += `<text class="q" x="${L + 8}" y="${H - B - 8}" fill="var(--muted)">Squeeze in</text>`;
+    svg += `<text class="q" x="${W - R - 8}" y="${H - B - 8}" text-anchor="end" fill="var(--muted)">Later</text>`;
+    svg += `<text class="tick" x="${W - R}" y="${H - 4}" text-anchor="end">days until due →</text>`;
+    const tips = [];
+    [...items].reverse().forEach((it) => {
+      const rr = 5 + Math.min(9, it.h * 0.7);
+      const topN = it.r.rank <= 3;
+      const fill = it.risk ? 'var(--warn)' : topN ? 'var(--viz-accent)' : 'var(--viz-gray-2)';
+      tips.push({ value: `#${it.r.rank} ${it.t.title}`, label: `due ${C.fmtDay(C.toDay(it.t.due))} · ${f1(it.h)}h left · ${it.assumed ? 'weight unknown (10% assumed)' : it.w + '% of grade'}`, rows: [{ color: fill, text: it.risk ? 'At risk' : 'On track' }] });
+      svg += `<g class="pt" tabindex="0" data-ti="${tips.length - 1}" data-id="${it.t.id}"><circle class="m" cx="${x(it.days)}" cy="${y(it.w)}" r="${rr}" style="fill:${it.assumed ? 'var(--surface)' : fill};stroke:${it.assumed ? fill : 'var(--surface)'}" stroke-width="2"/>`;
+      if (topN) svg += `<text x="${x(it.days)}" y="${y(it.w) + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="${it.assumed ? 'var(--text)' : '#fff'}">${it.r.rank}</text>`;
+      svg += `<circle cx="${x(it.days)}" cy="${y(it.w)}" r="${Math.max(12, rr + 3)}" fill="transparent"/></g>`;
+    });
+    box.innerHTML = svg + '</svg>';
+    bindTips(box, tips);
+    box.querySelectorAll('.pt').forEach((g) => g.addEventListener('click', () => openTask(g.dataset.id)));
+
+    // Ranking rows
+    const rtips = [];
     $('prioList').innerHTML = prio.map((r) => {
-      const t = taskById(r.id);
-      const p = r.parts;
-      return `<div class="prio" data-id="${r.id}">
-        <div class="rank">#${r.rank}</div>
-        <div><h4>${esc(t.title)}</h4><div class="hint" style="margin:0">${esc(t.course)} · due ${C.fmtDay(C.toDay(t.due))} · ${C.round(C.remaining({ ...t, scale: current.ratio }), 1)}h left</div>
-          <ul>${r.why.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></div>
-        <div class="bars"><div class="score">${r.score}</div>
-          <div class="stack"><i class="k-u" style="width:${p.urgency}%"></i><i class="k-i" style="width:${p.importance}%"></i><i class="k-e" style="width:${p.effort}%"></i><i class="k-b" style="width:${p.unblocks}%"></i></div>
-          <div class="keys"><span><i class="dot k-u"></i>urgency ${p.urgency}</span><span><i class="dot k-i"></i>weight ${p.importance}</span><span><i class="dot k-e"></i>effort ${p.effort}</span><span><i class="dot k-b"></i>unblocks ${p.unblocks}</span></div></div>
-      </div>`;
-    }).join('') || '<div class="empty">No open tasks. Paste some deadlines.</div>';
-    $('prioList').querySelectorAll('.prio').forEach((el) => el.addEventListener('click', () => openTask(el.dataset.id)));
+      const t = taskById(r.id), d = C.toDay(t.due), p = r.parts;
+      rtips.push({ value: `${Math.round(r.score)} / 100`, label: t.title, rows: [
+        { color: 'var(--p-urg)', text: `Urgency ${f1(p.urgency)} / 40` }, { color: 'var(--p-wt)', text: `Grade weight ${f1(p.importance)} / 25` },
+        { color: 'var(--p-eff)', text: `Effort left ${f1(p.effort)} / 15` }, { color: 'var(--p-unb)', text: `Unblocks ${f1(p.unblocks)} / 20` }] });
+      const seg = (v, c) => (v > 0 ? `<i style="width:${v}%;background:var(${c})"></i>` : '');
+      return `<div class="rr ${r.rank <= 3 ? 'top' : ''}" data-id="${t.id}" tabindex="0" data-ti="${rtips.length - 1}">
+        <div class="rk">${r.rank}</div>${courseTile(t.course, 32)}
+        <div class="rt"><b>${esc(t.title)}</b><span>${esc(shortCourse(t.course))} · <span class="when ${d - today <= 2 ? 'soon' : ''}">${rel(d)}</span> · ${f1(left(t))}h left${isRisk(t) ? ' · <span class="when soon">at risk</span>' : ''}</span></div>
+        <div class="rs"><div class="sbar">${seg(p.urgency, '--p-urg')}${seg(p.importance, '--p-wt')}${seg(p.effort, '--p-eff')}${seg(p.unblocks, '--p-unb')}</div></div>
+        <div class="rv">${Math.round(r.score)}</div></div>`;
+    }).join('');
+    bindTips($('prioList'), rtips);
+    $('prioList').querySelectorAll('.rr').forEach((el) => {
+      el.addEventListener('click', () => openTask(el.dataset.id));
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter') openTask(el.dataset.id); });
+    });
   }
 
   function renderTasks() {
@@ -251,7 +326,7 @@
       <td><input type="number" step="1" min="0" max="100" data-f="weight" value="${t.weight == null ? '' : t.weight}" placeholder="?"></td>
       <td>${t.deps.map((d) => esc((taskById(d) || {}).title || d)).join(', ') || '—'}</td>
       <td>${t.completed ? '<span class="conf high">done</span>' : `<span class="conf ${t.confidence}">${t.confidence}</span>`}</td>
-      <td class="src" title="${esc(t.source ? t.source.text : '')}">${t.source ? `L${t.source.line}: ${esc(t.source.text)}` : 'added manually'}</td>
+      <td class="src" title="${esc(t.source ? t.source.text : '')}">${t.source ? `${t.source.file ? `${esc(t.source.file)} · ` : ''}L${t.source.line}: ${esc(t.source.text)}` : 'added manually'}</td>
       <td><button class="del" title="Delete">×</button></td></tr>`).join('');
     $('taskTable').innerHTML = `<thead><tr><th>Task</th><th>Course</th><th>Type</th><th>Due</th><th>Est. h</th><th>Done h</th><th>Weight %</th><th>Depends on</th><th>Confidence</th><th>Evidence (source line)</th><th></th></tr></thead><tbody>${rows}</tbody>`;
     $('taskTable').querySelectorAll('tr[data-id]').forEach((tr) => {
@@ -273,7 +348,7 @@
       });
     });
     $('ignoredBox').innerHTML = state.ignored.length
-      ? `<b>Skipped lines</b> (no deadline found, so nothing was guessed):<br>${state.ignored.map((i) => `L${i.line}: <code>${esc(i.text)}</code> (${esc(i.why)})`).join('<br>')}` : '';
+      ? `<b>Skipped lines</b> (no deadline found, so nothing was guessed):<br>${state.ignored.map((i) => `${i.file ? `${esc(i.file)} · ` : ''}L${i.line}: <code>${esc(i.text)}</code> (${esc(i.why)})`).join('<br>')}` : '';
   }
 
   /* ---------- task drawer ---------- */
@@ -284,7 +359,7 @@
     const sessions = current.plan.days.flatMap((d) => d.sessions.filter((s) => s.id === id).map((s) => `${C.fmtDay(d.day)}: ${fmtH(s.hours)}`));
     const fin = current.plan.finish[id];
     $('drawerBody').innerHTML = `
-      <h3>${esc(t.title)}</h3>
+      <div class="dr-head">${courseTile(t.course, 44)}<h3>${esc(t.title)}</h3></div>
       <div class="hint">${esc(t.course)} · ${esc(t.type)} · due ${C.fmtDay(C.toDay(t.due))} · ${t.weight == null ? 'weight unknown' : t.weight + '% of grade'}</div>
       ${t.completed ? '<p><b style="color:var(--ok)">Completed</b></p>' : `
       <p><b>${r ? `Priority #${r.rank} (score ${r.score})` : ''}</b></p>
@@ -292,7 +367,7 @@
       <p><b>Plan:</b> ${C.round(C.remaining({ ...t, scale: t.doneH > 0 ? 1 : current.ratio }), 1)}h left → ${sessions.length ? sessions.join(' · ') : 'not scheduled'}${fin != null ? ` · finishes ${C.fmtDay(fin)} (${early(C.toDay(t.due) - fin)})` : ''}</p>`}
       ${t.notes && t.notes.length ? `<p><b>Dependencies:</b></p><ul>${t.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
       <p><b>Evidence:</b> effort ${t.effortH}h (${esc(t.effortSource || 'entered')}), confidence ${esc(t.confidence)}</p>
-      ${t.source ? `<blockquote>Line ${t.source.line}: ${esc(t.source.text)}</blockquote>` : ''}
+      ${t.source ? `<blockquote>${t.source.file ? `From ${esc(t.source.file)}, line` : 'Line'} ${t.source.line}: ${esc(t.source.text)}</blockquote>` : ''}
       ${t.completed ? '' : `<div class="actions">
         <button class="btn primary" data-act="done">Mark complete</button>
         <button class="btn" data-act="log1">Did 1h</button>
@@ -357,16 +432,99 @@
   $('btnExtract').addEventListener('click', () => {
     state.text = $('inputText').value;
     const { tasks, ignored } = C.extractTasks(state.text, state.today);
-    tasks.forEach((t) => { t.origEst = t.effortH; });
-    state.tasks = tasks; state.ignored = ignored; state.nextId = tasks.length + 1;
+    // Re-extracting (e.g. after importing another file) keeps progress on tasks it finds again,
+    // and keeps deadlines added by hand.
+    const key = (t) => `${t.course}|${t.title}|${t.due}`.toLowerCase();
+    const old = new Map(state.tasks.filter((t) => t.source).map((t) => [key(t), t]));
+    const manual = state.tasks.filter((t) => !t.source);
+    const idMap = {};
+    let kept = 0;
+    tasks.forEach((t) => {
+      const o = old.get(key(t));
+      idMap[t.id] = o ? o.id : `t${state.nextId++}`;
+      t.origEst = t.effortH;
+      if (o) { kept++; ['doneH', 'completed', 'started', 'origEst', 'effortH', 'effortSource'].forEach((f) => { if (o[f] !== undefined) t[f] = o[f]; }); }
+    });
+    tasks.forEach((t) => { t.id = idMap[t.id]; t.deps = t.deps.map((d) => idMap[d]); });
+    const ids = new Set(tasks.map((t) => t.id).concat(manual.map((t) => t.id)));
+    manual.forEach((t) => { t.deps = t.deps.filter((d) => ids.has(d)); });
+    state.tasks = tasks.concat(manual); state.ignored = ignored;
+    const files = [...new Set(tasks.map((t) => t.source.file).filter(Boolean))];
     state.log = { title: `Extracted ${tasks.length} tasks from your text`, items: [
       `${tasks.filter((t) => t.confidence === 'high').length} high-confidence, ${tasks.filter((t) => t.confidence !== 'high').length} worth double-checking (Tasks tab)`,
+      ...(files.length ? [`${tasks.filter((t) => t.source.file).length} from imported files: ${files.join(', ')}`] : []),
+      ...(kept ? [`Progress kept on ${kept} task(s) you already had`] : []),
+      ...(manual.length ? [`${manual.length} deadline(s) you added by hand kept`] : []),
       `${tasks.filter((t) => t.deps.length).length} dependency link(s) detected`,
       `${ignored.length} line(s) skipped: no date, so nothing was guessed`] };
+    importList.length = 0; renderImports();
     $('pasteModal').hidden = true;
     toast(`Found ${tasks.length} tasks`);
     render();
   });
+
+  /* ---------- import: files, screenshots and links become text in the box above ---------- */
+  const importList = []; // { name, status: 'busy' | 'done' | 'error', msg, pct }
+  function renderImports() {
+    $('importList').innerHTML = importList.map((it) => `<li class="${it.status}">
+      ${ic(it.status === 'done' ? 'check-circle' : it.status === 'error' ? 'alert' : 'clock')}
+      <span class="nm">${esc(it.name)}</span>
+      <span class="msg">${esc(it.msg || '')}${it.pct != null && it.status === 'busy' ? ` ${Math.round(it.pct * 100)}%` : ''}</span></li>`).join('');
+  }
+  function appendImported(name, method, text) {
+    const box = $('inputText');
+    const body = text.split('\n').map((l) => l.trim()).filter(Boolean).join('\n');
+    box.value = `${box.value.replace(/\s+$/, '')}${box.value.trim() ? '\n\n' : ''}--- from ${name.replace(/-{3}/g, '')} (${method}) ---\n${body}\n`;
+    box.scrollTop = box.scrollHeight;
+    return body ? body.split('\n').length : 0;
+  }
+  async function runImport(name, job) {
+    const it = { name, status: 'busy', msg: 'Reading…' };
+    importList.push(it); renderImports();
+    const progress = (pct, msg) => { if (pct != null) it.pct = pct; if (msg) it.msg = msg; renderImports(); };
+    try {
+      const r = await job(progress);
+      const lines = appendImported(r.name || name, r.method, r.text);
+      const dated = C.extractTasks(r.text, state.today).tasks.length;
+      Object.assign(it, { status: lines ? 'done' : 'error', pct: null,
+        msg: lines ? `${r.method} · ${lines} line(s), ${dated} look like deadlines` : `${r.method} · no text found` });
+    } catch (e) {
+      Object.assign(it, { status: 'error', pct: null, msg: e.message || String(e) });
+    }
+    renderImports();
+  }
+  function importFiles(files) {
+    if (!window.DuelineImport) { toast('Importer failed to load. You can still paste text'); return; }
+    if ($('pasteModal').hidden || $('manyPane').hidden) openNew('many');
+    [...files].forEach((f) => runImport(f.name || 'Pasted screenshot', (p) => window.DuelineImport.fileToText(f, p)));
+  }
+  $('fileInput').addEventListener('change', (e) => { importFiles(e.target.files); e.target.value = ''; });
+  $('dropZone').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('fileInput').click(); } });
+  ['dragenter', 'dragover'].forEach((ev) => $('dropZone').addEventListener(ev, (e) => { e.preventDefault(); $('dropZone').classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((ev) => $('dropZone').addEventListener(ev, () => $('dropZone').classList.remove('over')));
+  // Files dropped anywhere (not on the task board) are imported instead of opening in the tab.
+  document.addEventListener('dragover', (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+  document.addEventListener('drop', (e) => {
+    if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+    e.preventDefault();
+    importFiles(e.dataTransfer.files);
+  });
+  // A screenshot on the clipboard (⌘V / Ctrl+V) is read like an uploaded image. Plain text pastes as usual.
+  document.addEventListener('paste', (e) => {
+    const files = [...(e.clipboardData ? e.clipboardData.files : [])];
+    if (!files.length) return;
+    e.preventDefault();
+    importFiles(files.map((f, i) => (f.name && f.name !== 'image.png' ? f : new File([f], `Pasted screenshot${files.length > 1 ? ` ${i + 1}` : ''}.${(f.type.split('/')[1] || 'png')}`, { type: f.type }))));
+  });
+  $('urlForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const url = $('urlInput').value.trim();
+    if (!url) return;
+    if (!window.DuelineImport) { toast('Importer failed to load. You can still paste text'); return; }
+    $('urlInput').value = '';
+    runImport(url.replace(/^https?:\/\//, '').slice(0, 60), (p) => window.DuelineImport.urlToText(url, p));
+  });
+
   $('btnDemo').addEventListener('click', () => { state = demoState(); $('pasteModal').hidden = true; render(); toast('Sample semester loaded'); });
   $('btnReset').addEventListener('click', () => { const now = new Date(); const realToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; state = { ...demoState(), today: realToday, activity: {}, text: '', tasks: [], ignored: [], log: null }; $('pasteModal').hidden = true; render(); });
   $('bufferDays').addEventListener('change', (e) => { state.settings.bufferDays = Math.max(0, +e.target.value || 0); render(); });
@@ -494,7 +652,7 @@
 
     // Sidebar: course filters
     const courses = [...new Set(state.tasks.map((t) => t.course))];
-    $('courseFilters').innerHTML = courses.map((c) => `<label class="cfilter" style="--c:${coursePill(c)[1]}"><input type="checkbox" data-c="${esc(c)}" ${cal.hidden.has(c) ? '' : 'checked'}>${esc(courseName(c).name)}</label>`).join('') || '<div class="muted small">No courses yet</div>';
+    $('courseFilters').innerHTML = courses.map((c) => `<label class="cfilter" style="--c:${coursePill(c)[1]}"><input type="checkbox" data-c="${esc(c)}" ${cal.hidden.has(c) ? '' : 'checked'}>${courseTile(c, 22)}${esc(courseName(c).name)}</label>`).join('') || '<div class="muted small">No courses yet</div>';
     $('courseFilters').querySelectorAll('input').forEach((i) => i.addEventListener('change', () => { if (i.checked) cal.hidden.delete(i.dataset.c); else cal.hidden.add(i.dataset.c); renderPlan(); }));
 
     // Main view
@@ -525,7 +683,7 @@
       const list = ev[cal.cursor] || [];
       html = `<div class="dayview">${list.length ? list.map((e) => e.kind === 'due'
         ? `<div class="slot due ${e.ok ? 'ok' : ''}" data-id="${e.t.id}"><div class="badge">${ic(e.ok ? 'check' : 'flag')}${e.ok ? 'Ready' : 'Due'}</div><div><div class="title">${esc(e.t.title)}</div><div class="sub">${esc(courseName(e.t.course).name)}</div></div></div>`
-        : `<div class="slot" data-id="${e.t.id}"><div class="time"><span style="color:${coursePill(e.t.course)[1]};display:inline-flex">${ic('clock')}</span>${clock(e.from)} - ${clock(e.from + e.hours)}</div><div class="title">${esc(e.t.title)}</div><div class="sub">${esc(courseName(e.t.course).name)} · ${C.round(e.hours, 1)}h</div></div>`).join('')
+        : `<div class="slot" data-id="${e.t.id}"><div class="time">${courseTile(e.t.course, 20)}${clock(e.from)} - ${clock(e.from + e.hours)}</div><div class="title">${esc(e.t.title)}</div><div class="sub">${esc(courseName(e.t.course).name)} · ${C.round(e.hours, 1)}h</div></div>`).join('')
         : `<div class="empty-day">${ic('coffee')}Nothing planned for this day</div>`}</div>`;
     }
     $('calGrid').innerHTML = html;
@@ -587,7 +745,7 @@
             <span class="f ${col.key === 'risk' ? 'late' : ''}">${ic('calendar')}${dueTxt}</span>
             ${t.completed ? '' : `<span class="f">${ic('hours')}${left}h left</span>`}
             <span class="spacer"></span>
-            <span class="cavatar" style="background:${TILE_BG[ci % TILE_BG.length]}" title="${esc(t.course)}">${esc(initials(t.course))}</span>
+            ${courseTile(t.course, 26)}
           </div></div>`;
       }).join('');
       return `<section class="bcol" data-col="${col.key}">
@@ -708,10 +866,10 @@
     const soon = live.filter((t) => C.toDay(t.due) - today <= 7).sort((a, b) => a.due.localeCompare(b.due));
     const util = allCap ? allLoad / allCap : 0;
     $('wlKpis').innerHTML = `
-      <div class="kt"><div class="kl">Next 7 days</div><div class="kv">${f1(wkLoad)}<small>h</small></div><div class="ks">of ${f1(wkCap)}h free</div><div class="meter2"><i style="width:${wkCap ? Math.min(100, (wkLoad / wkCap) * 100) : 0}%"></i></div></div>
-      <div class="kt"><div class="kl">Free time used</div><div class="kv">${Math.round(util * 100)}<small>%</small></div><div class="ks">until ${C.fmtDay(lastDue)}</div><div class="meter2"><i style="width:${Math.min(100, util * 100)}%"></i></div></div>
-      <div class="kt"><div class="kl">Busiest day</div><div class="kv">${f1(peak.load)}<small>h</small></div><div class="ks">${C.fmtDay(peak.d)}</div></div>
-      <div class="kt"><div class="kl">Due in 7 days</div><div class="kv">${soon.length}</div><div class="ks">${soon[0] ? esc(soon[0].title) : 'nothing due'}</div></div>`;
+      <div class="kt">${decoTile(4)}<div class="kl">Next 7 days</div><div class="kv">${f1(wkLoad)}<small>h</small></div><div class="ks">of ${f1(wkCap)}h free</div><div class="meter2"><i style="width:${wkCap ? Math.min(100, (wkLoad / wkCap) * 100) : 0}%"></i></div></div>
+      <div class="kt">${decoTile(2)}<div class="kl">Free time used</div><div class="kv">${Math.round(util * 100)}<small>%</small></div><div class="ks">until ${C.fmtDay(lastDue)}</div><div class="meter2"><i style="width:${Math.min(100, util * 100)}%"></i></div></div>
+      <div class="kt">${decoTile(5)}<div class="kl">Busiest day</div><div class="kv">${f1(peak.load)}<small>h</small></div><div class="ks">${C.fmtDay(peak.d)}</div></div>
+      <div class="kt">${decoTile(1)}<div class="kl">Due in 7 days</div><div class="kv">${soon.length}</div><div class="ks">${soon[0] ? esc(soon[0].title) : 'nothing due'}</div></div>`;
 
     // Daily columns: free-time track behind, planned hours in front
     const box = $('wlDaily');
@@ -795,7 +953,7 @@
     const rows = Object.entries(per).sort((a, b) => b[1].h - a[1].h);
     const mx = Math.max(1, ...rows.map((r) => r[1].h));
     $('wlCourseSub').textContent = `${f1(rows.reduce((a, r) => a + r[1].h, 0))}h in total`;
-    $('wlCourses').innerHTML = rows.map(([c, v]) => `<div class="hb"><div class="hn">${esc(courseName(c).name)}<span>${v.n} task${v.n > 1 ? 's' : ''}</span></div><div class="hv">${f1(v.h)}h</div><div class="ht"><i style="width:${(v.h / mx) * 100}%"></i></div></div>`).join('') || '<div class="muted small">No open tasks</div>';
+    $('wlCourses').innerHTML = rows.map(([c, v]) => `<div class="hb"><div class="hn">${courseTile(c, 22)}<span class="nm">${esc(courseName(c).name)}</span><span>${v.n} task${v.n > 1 ? 's' : ''}</span></div><div class="hv">${f1(v.h)}h</div><div class="ht"><i style="width:${(v.h / mx) * 100}%"></i></div></div>`).join('') || '<div class="muted small">No open tasks</div>';
   }
 
   /* ---------- Results ---------- */
@@ -812,10 +970,10 @@
     const fewer = Math.round((1 - ours.crunchDays / gr.crunchDays) * 100);
     const legend = `<div class="legend2">${P.map((p) => `<span><i style="background:${p.color}"></i>${p.name}</span>`).join('')}<span class="muted">Grind = works every free hour</span></div>`;
     let html = `<div class="res-top">
-      <div class="hero"><div class="hv">${Math.round(ours.onTimePct)}%</div><div class="hl">of deadlines met on time</div><div class="hc">vs ${Math.round(lm.onTimePct)}% working last-minute <span class="delta">+${Math.round(ours.onTimePct - lm.onTimePct)} pts</span></div></div>
-      <div class="kt"><div class="kl">Work left undone</div><div class="kv">${f1(ours.unfinishedHours)}<small>h</small></div><div class="ks">vs ${f1(lm.unfinishedHours)}h last-minute</div></div>
-      <div class="kt"><div class="kl">Crunch days</div><div class="kv">−${fewer}<small>%</small></div><div class="ks">vs grinding every free hour</div></div>
-      <div class="kt"><div class="kl">Test semesters</div><div class="kv">${E.scenarios}</div><div class="ks">never used for tuning</div></div>
+      <div class="hero">${decoTile(2, 44)}<div class="hv">${Math.round(ours.onTimePct)}%</div><div class="hl">of deadlines met on time</div><div class="hc">vs ${Math.round(lm.onTimePct)}% working last-minute <span class="delta">+${Math.round(ours.onTimePct - lm.onTimePct)} pts</span></div></div>
+      <div class="kt">${decoTile(0)}<div class="kl">Work left undone</div><div class="kv">${f1(ours.unfinishedHours)}<small>h</small></div><div class="ks">vs ${f1(lm.unfinishedHours)}h last-minute</div></div>
+      <div class="kt">${decoTile(3)}<div class="kl">Crunch days</div><div class="kv">−${fewer}<small>%</small></div><div class="ks">vs grinding every free hour</div></div>
+      <div class="kt">${decoTile(1)}<div class="kl">Test semesters</div><div class="kv">${E.scenarios}</div><div class="ks">never used for tuning</div></div>
     </div>`;
 
     // Dot strip: on-time rate per semester, one row per approach
@@ -885,8 +1043,62 @@
 
   // Charts size to their container, so redraw on resize and when a tab opens.
   let rz;
-  window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (isActive('tab-workload')) renderWorkload(); if (isActive('tab-proof')) drawDots(window.CRUNCH_EVAL, [{ k: 'crunch', name: 'Dueline', color: 'var(--viz-accent)' }, { k: 'lastminute', name: 'Last-minute', color: 'var(--viz-gray-1)' }, { k: 'duedate', name: 'Grind', color: 'var(--viz-gray-2)' }]); }, 150); });
-  $('tabs').addEventListener('click', () => { requestAnimationFrame(() => { if (isActive('tab-workload')) renderWorkload(); if (isActive('tab-proof')) renderProof(); }); });
+  window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (isActive('tab-home')) renderRadar(); if (isActive('tab-priorities')) renderPrio(); if (isActive('tab-workload')) renderWorkload(); if (isActive('tab-proof')) drawDots(window.CRUNCH_EVAL, [{ k: 'crunch', name: 'Dueline', color: 'var(--viz-accent)' }, { k: 'lastminute', name: 'Last-minute', color: 'var(--viz-gray-1)' }, { k: 'duedate', name: 'Grind', color: 'var(--viz-gray-2)' }]); }, 150); });
+  $('tabs').addEventListener('click', () => { requestAnimationFrame(() => { if (isActive('tab-priorities')) renderPrio(); if (isActive('tab-workload')) renderWorkload(); if (isActive('tab-proof')) renderProof(); }); });
+
+  /* ---------- Home: deadlines-ahead card ---------- */
+  function renderRadar() {
+    if (!current) return;
+    const { plan, live } = current;
+    const today = C.toDay(state.today);
+    const DAYS = 14;
+    const isRisk = (t) => plan.unfinished[t.id] || plan.finish[t.id] == null || plan.finish[t.id] > C.toDay(t.due);
+    const box = $('radarViz');
+    const W = Math.max(240, box.clientWidth || 300), H = 104, L = 8, R = 8, base = 78;
+    const x = (d) => L + ((d - today) / (DAYS - 1)) * (W - L - R);
+    let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Deadlines in the next 14 days">`;
+    svg += `<line x1="${x(today)}" x2="${x(today + DAYS - 1)}" y1="${base}" y2="${base}" stroke="var(--line)" stroke-width="2" stroke-linecap="round"/>`;
+    for (let d = today; d < today + DAYS; d++) {
+      const wkend = [0, 6].includes(C.weekday(d));
+      svg += `<line x1="${x(d)}" x2="${x(d)}" y1="${base - 3}" y2="${base + 3}" stroke="${wkend ? 'var(--faint)' : 'var(--muted)'}" stroke-width="1"/>`;
+    }
+    svg += `<circle cx="${x(today)}" cy="${base}" r="4" fill="var(--text)"/>`;
+    svg += `<text x="${x(today)}" y="${H - 4}" font-size="10.5" fill="var(--text)" font-weight="600">Today</text>`;
+    svg += `<text x="${x(today + 7)}" y="${H - 4}" font-size="10.5" fill="var(--muted)" text-anchor="middle">${C.fmtDay(today + 7).slice(4)}</text>`;
+    svg += `<text x="${x(today + DAYS - 1)}" y="${H - 4}" font-size="10.5" fill="var(--muted)" text-anchor="end">${C.fmtDay(today + DAYS - 1).slice(4)}</text>`;
+    const soon = live.filter((t) => { const d = C.toDay(t.due); return d >= today && d < today + DAYS; }).sort((a, b) => a.due.localeCompare(b.due));
+    const perDay = {};
+    const tips = [];
+    soon.forEach((t) => {
+      const d = C.toDay(t.due);
+      const k = perDay[d] = (perDay[d] || 0) + 1;
+      const cy = base - 18 - (k - 1) * 16;
+      const r = 4 + Math.min(3.5, (t.weight == null ? 10 : t.weight) / 5);
+      const risk = isRisk(t);
+      tips.push({ value: t.title, label: `${C.fmtDay(d)} · ${f1(C.remaining({ ...t, scale: t.doneH > 0 ? 1 : current.ratio }))}h left${t.weight != null ? ` · ${t.weight}% of grade` : ''}`, rows: [{ color: risk ? 'var(--warn)' : 'var(--viz-accent)', text: risk ? 'At risk' : 'On track' }] });
+      svg += `<g class="pin" tabindex="0" data-ti="${tips.length - 1}"><line x1="${x(d)}" x2="${x(d)}" y1="${base}" y2="${cy}" stroke="var(--faint)" stroke-width="1.5"/>`;
+      svg += `<circle class="dotm" cx="${x(d)}" cy="${cy}" r="${r}" style="fill:${risk ? 'var(--warn)' : 'var(--viz-accent)'}" stroke="var(--surface)" stroke-width="2"/>`;
+      svg += `<circle cx="${x(d)}" cy="${cy}" r="11" fill="transparent"/></g>`;
+    });
+    if (soon[0]) {
+      const d0 = C.toDay(soon[0].due);
+      const lx = x(d0), anchor = lx > W * 0.6 ? 'end' : 'start';
+      const ty = base - 18 - ((perDay[d0] || 1) - 1) * 16 - 14;
+      const label = soon[0].title.length > 24 ? soon[0].title.slice(0, 23) + '…' : soon[0].title;
+      svg += `<text x="${anchor === 'start' ? lx - 4 : lx + 4}" y="${Math.max(10, ty)}" font-size="11" fill="var(--text)" font-weight="600" text-anchor="${anchor}">Next: ${esc(label)}</text>`;
+    }
+    box.innerHTML = svg + '</svg>';
+    bindTips(box, tips);
+    $('radarSub').textContent = soon.length ? `${soon.length} in the next 14 days` : 'nothing due in the next 14 days';
+
+    // Three buckets: count and hours of work
+    const bucket = (lo, hi) => live.filter((t) => { const d = C.toDay(t.due) - today; return d >= lo && d <= hi; });
+    const B = [['This week', bucket(-999, 6)], ['Next week', bucket(7, 13)], ['Later', bucket(14, 9999)]]
+      .map(([label, ts]) => ({ label, n: ts.length, h: ts.reduce((a, t) => a + C.remaining({ ...t, scale: t.doneH > 0 ? 1 : current.ratio }), 0) }));
+    const mh = Math.max(1, ...B.map((b) => b.h));
+    $('radarBuckets').innerHTML = B.map((b) => `<div class="rb"><b>${b.n}</b><div class="rl">${b.label}</div><div class="rh"><i style="--w:${Math.round((b.h / mh) * 100)}%"></i>${f1(b.h)}h</div></div>`).join('');
+  }
+  $('btnPasteMany').addEventListener('click', () => openNew('many'));
 
   render();
 })();

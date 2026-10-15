@@ -40,6 +40,8 @@
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
     <symbol id="i-hours" viewBox="0 0 24 24"><path d="M5 22h14M5 2h14M17 22v-4.17a2 2 0 0 0-.59-1.42L12 12l-4.41 4.41A2 2 0 0 0 7 17.83V22M7 2v4.17a2 2 0 0 0 .59 1.42L12 12l4.41-4.41A2 2 0 0 0 17 6.17V2"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5M12 3v12"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
     <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4M10 9H8M16 13H8M16 17H8"/></symbol>
   </defs>
 </svg>
@@ -77,12 +79,15 @@
       </div>
       <div class="stats" id="kpis"></div>
 
-      <div class="cta-card">
-        <div class="cta-icon"><svg class="i"><use href="#i-clipboard"/></svg></div>
-        <h3>Got new deadlines?</h3>
-        <p>Add them one at a time, or paste a whole syllabus or class announcement.</p>
-        <button class="btn primary" id="btnOpenPaste">Add deadlines</button>
-        <div id="extractInfo" class="muted small"></div>
+      <div class="cta-card radar">
+        <div class="radar-head">
+          <div><h3>Deadlines ahead</h3><span class="muted small" id="radarSub">next 14 days</span></div>
+          <button class="btn primary small" id="btnOpenPaste"><svg class="i"><use href="#i-plus"/></svg>Add</button>
+        </div>
+        <div id="radarViz" class="radar-viz"></div>
+        <div class="radar-buckets" id="radarBuckets"></div>
+        <div class="radar-import" id="extractInfo"></div>
+        <button class="btn ghost wide paste-btn" id="btnPasteMany"><svg class="i"><use href="#i-file"/></svg>Paste a syllabus or announcement</button>
       </div>
 
       <details class="settings">
@@ -164,9 +169,21 @@
   </div>
 </main>
 
-<main class="tab page" id="tab-priorities">
-  <div class="page-head"><h2>Priorities</h2><span class="muted small">Score = urgency (40) + grade weight (25) + effort left (15) + unblocks other work (20)</span></div>
-  <div id="prioList"></div>
+<main class="tab page wide" id="tab-priorities">
+  <div class="page-head"><h2>Priorities</h2><span class="muted small">what to work on next, and why</span></div>
+  <div class="prio-top">
+    <div class="viz-card upnext" id="upNext"></div>
+    <div class="viz-card">
+      <div class="viz-title"><h3>Urgency vs importance</h3><span class="sub">dot size = hours left</span><span class="spacer"></span>
+        <div class="legend2"><span><i class="dot" style="background:var(--viz-accent)"></i>Top 3</span><span><i class="dot" style="background:var(--viz-gray-2)"></i>Others</span><span><i class="dot" style="background:var(--warn)"></i>At risk</span></div></div>
+      <div id="matrix"></div>
+    </div>
+  </div>
+  <div class="viz-card">
+    <div class="viz-title"><h3>Ranking</h3><span class="sub">score out of 100</span><span class="spacer"></span>
+      <div class="legend2"><span><i style="background:var(--p-urg)"></i>Urgency /40</span><span><i style="background:var(--p-wt)"></i>Grade weight /25</span><span><i style="background:var(--p-eff)"></i>Effort left /15</span><span><i style="background:var(--p-unb)"></i>Unblocks /20</span></div></div>
+    <div id="prioList" class="rank-list"></div>
+  </div>
 </main>
 
 <main class="tab page wide" id="tab-tasks">
@@ -232,7 +249,7 @@
     <h3>New deadline</h3>
     <div class="seg" role="tablist">
       <button class="active" data-mode="one" type="button">Add one</button>
-      <button data-mode="many" type="button">Paste many</button>
+      <button data-mode="many" type="button">Paste or upload</button>
     </div>
     <form id="oneForm" class="form-grid">
       <label class="full">Title<input id="fTitle" required placeholder="e.g. DA 3: Transactions case study"></label>
@@ -246,7 +263,20 @@
       <div class="actions full"><button class="btn primary" type="submit">Add deadline</button><button class="btn ghost pasteCancel" type="button">Cancel</button></div>
     </form>
     <div id="manyPane" hidden>
-      <p class="muted small">Paste from a syllabus, VTOP or a class group. Put course headers on their own line. Lines without a date are skipped, never guessed.</p>
+      <p class="muted small">Paste from a syllabus, VTOP or a class group, or upload the curriculum, schedule or course plan. Put course headers on their own line. Lines without a date are skipped, never guessed.</p>
+      <div class="import">
+        <label class="drop" id="dropZone" tabindex="0">
+          <input type="file" id="fileInput" multiple hidden accept="image/*,.pdf,.doc,.docx,.pptx,.odt,.odp,.xlsx,.xls,.ods,.csv,.tsv,.ics,.txt,.md,.html,.htm,.rtf,.json,.eml">
+          <svg class="i"><use href="#i-upload"/></svg>
+          <span><b>Drop files or screenshots</b>, or <u>browse</u><br><span class="muted small">Images, PDF, Word, PowerPoint, Excel/CSV, calendar (.ics), text. Paste a screenshot with ⌘V / Ctrl+V.</span></span>
+        </label>
+        <form class="url-row" id="urlForm">
+          <label class="url-input"><svg class="i"><use href="#i-link"/></svg><input type="text" id="urlInput" inputmode="url" placeholder="Or a link: course page, PDF, Google Doc or Sheet" aria-label="Link to import"></label>
+          <button class="btn small" type="submit">Fetch</button>
+        </form>
+        <ul class="import-list" id="importList"></ul>
+        <p class="muted small import-note">Imported text is added below so you can check it before extracting. Screenshots are read in your browser; if that fails they go to the free OCR.space API. Links that block direct access go through allorigins.win or r.jina.ai.</p>
+      </div>
       <textarea id="inputText" spellcheck="false" placeholder="BCSE302L - Database Systems&#10;DA 1 due 20 Oct (10%)&#10;CAT 2 on 3 Nov"></textarea>
       <div class="actions"><button class="btn primary" id="btnExtract" type="button">Extract deadlines</button><button class="btn ghost pasteCancel" type="button">Cancel</button>
         <span class="spacer"></span><button class="btn ghost small" id="btnDemo" type="button">Load sample semester</button><button class="btn ghost small" id="btnReset" type="button">Clear all</button></div>
@@ -258,6 +288,7 @@
 <script src="js/engine.js"></script>
 <script src="js/sample.js"></script>
 <script src="js/eval_results.js"></script>
+<script src="js/importer.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
