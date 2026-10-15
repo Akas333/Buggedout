@@ -1,5 +1,7 @@
 # Dueline: Academic Workload & Assignment Planner
 
+**Live demo: https://akas333.github.io/Buggedout/**
+
 **Bugged Out! 2026, Round 1, PS 04.** Paste your deadlines and get a plan you can actually follow.
 
 Students get deadlines from syllabi, VTOP, classroom announcements and WhatsApp groups. Calendar apps record the dates. They don't account for effort, dependencies, free time, or the fact that things go wrong. Dueline turns a messy text dump into a prioritised, replanning study schedule and explains every decision it makes.

@@ -368,7 +368,7 @@
     render();
   });
   $('btnDemo').addEventListener('click', () => { state = demoState(); $('pasteModal').hidden = true; render(); toast('Sample semester loaded'); });
-  $('btnReset').addEventListener('click', () => { state = { ...demoState(), text: '', tasks: [], ignored: [], log: null }; $('pasteModal').hidden = true; render(); });
+  $('btnReset').addEventListener('click', () => { const now = new Date(); const realToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; state = { ...demoState(), today: realToday, activity: {}, text: '', tasks: [], ignored: [], log: null }; $('pasteModal').hidden = true; render(); });
   $('bufferDays').addEventListener('change', (e) => { state.settings.bufferDays = Math.max(0, +e.target.value || 0); render(); });
   $('prior').addEventListener('change', (e) => { state.settings.prior = Math.min(2, Math.max(1, +e.target.value || 1)); render(); });
   $('commitForm').addEventListener('submit', (e) => {
