@@ -237,7 +237,7 @@
     const left = (t) => C.remaining({ ...t, scale: t.doneH > 0 ? 1 : current.ratio });
     if (!prio.length) {
       $('upNext').innerHTML = '<div class="empty">No open tasks. Add a deadline to get a plan.</div>';
-      $('matrix').innerHTML = ''; $('prioList').innerHTML = '';
+      $('prioList').innerHTML = '';
       return;
     }
 
@@ -258,39 +258,6 @@
       <div class="actions"><button class="btn primary small" id="unOpen">Open task</button><button class="btn small" id="unPlan">See schedule</button></div>`;
     $('unOpen').addEventListener('click', () => openTask(top.id));
     $('unPlan').addEventListener('click', () => document.querySelector('#tabs [data-tab=plan]').click());
-
-    // Urgency vs importance matrix
-    const box = $('matrix');
-    const W = Math.max(320, box.clientWidth || 640), H = 270, L = 44, R = 14, T = 12, B = 36;
-    const items = prio.map((r) => { const t = taskById(r.id); return { r, t, days: Math.max(0, C.toDay(t.due) - today), w: t.weight == null ? 10 : t.weight, assumed: t.weight == null, h: left(t), risk: isRisk(t) }; });
-    const maxD = Math.max(14, Math.ceil(Math.max(...items.map((i) => i.days)) / 7) * 7);
-    const maxW = Math.max(20, Math.ceil(Math.max(...items.map((i) => i.w)) / 5) * 5);
-    const x = (d) => L + (d / maxD) * (W - L - R);
-    const y = (w) => T + (1 - w / maxW) * (H - T - B);
-    const xs = x(Math.min(7, maxD)), ys = y(Math.min(10, maxW));
-    let svg = `<svg class="viz-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Tasks by days left and grade weight">`;
-    svg += `<rect x="${L}" y="${T}" width="${xs - L}" height="${ys - T}" style="fill:var(--accent-soft)" rx="6"/>`;
-    for (let d = 0; d <= maxD; d += 7) svg += `<line class="grid" x1="${x(d)}" x2="${x(d)}" y1="${T}" y2="${H - B}"/><text class="tick" x="${x(d)}" y="${H - B + 16}" text-anchor="middle">${d === 0 ? 'now' : d + 'd'}</text>`;
-    for (let w = 0; w <= maxW; w += 5) svg += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(w)}" y2="${y(w)}"/><text class="tick" x="${L - 8}" y="${y(w) + 4}" text-anchor="end">${w}%</text>`;
-    svg += `<line x1="${xs}" x2="${xs}" y1="${T}" y2="${H - B}" stroke="var(--faint)" stroke-width="1.5"/><line x1="${L}" x2="${W - R}" y1="${ys}" y2="${ys}" stroke="var(--faint)" stroke-width="1.5"/>`;
-    svg += `<text class="q" x="${L + 8}" y="${T + 16}" fill="var(--accent-text)">Do first</text>`;
-    svg += `<text class="q" x="${W - R - 8}" y="${T + 16}" text-anchor="end" fill="var(--muted)">Plan ahead</text>`;
-    svg += `<text class="q" x="${L + 8}" y="${H - B - 8}" fill="var(--muted)">Squeeze in</text>`;
-    svg += `<text class="q" x="${W - R - 8}" y="${H - B - 8}" text-anchor="end" fill="var(--muted)">Later</text>`;
-    svg += `<text class="tick" x="${W - R}" y="${H - 4}" text-anchor="end">days until due →</text>`;
-    const tips = [];
-    [...items].reverse().forEach((it) => {
-      const rr = 5 + Math.min(9, it.h * 0.7);
-      const topN = it.r.rank <= 3;
-      const fill = it.risk ? 'var(--warn)' : topN ? 'var(--viz-accent)' : 'var(--viz-gray-2)';
-      tips.push({ value: `#${it.r.rank} ${it.t.title}`, label: `due ${C.fmtDay(C.toDay(it.t.due))} · ${f1(it.h)}h left · ${it.assumed ? 'weight unknown (10% assumed)' : it.w + '% of grade'}`, rows: [{ color: fill, text: it.risk ? 'At risk' : 'On track' }] });
-      svg += `<g class="pt" tabindex="0" data-ti="${tips.length - 1}" data-id="${it.t.id}"><circle class="m" cx="${x(it.days)}" cy="${y(it.w)}" r="${rr}" style="fill:${it.assumed ? 'var(--surface)' : fill};stroke:${it.assumed ? fill : 'var(--surface)'}" stroke-width="2"/>`;
-      if (topN) svg += `<text x="${x(it.days)}" y="${y(it.w) + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="${it.assumed ? 'var(--text)' : '#fff'}">${it.r.rank}</text>`;
-      svg += `<circle cx="${x(it.days)}" cy="${y(it.w)}" r="${Math.max(12, rr + 3)}" fill="transparent"/></g>`;
-    });
-    box.innerHTML = svg + '</svg>';
-    bindTips(box, tips);
-    box.querySelectorAll('.pt').forEach((g) => g.addEventListener('click', () => openTask(g.dataset.id)));
 
     // Ranking rows
     const rtips = [];
@@ -956,95 +923,44 @@
     $('wlCourses').innerHTML = rows.map(([c, v]) => `<div class="hb"><div class="hn">${courseTile(c, 22)}<span class="nm">${esc(courseName(c).name)}</span><span>${v.n} task${v.n > 1 ? 's' : ''}</span></div><div class="hv">${f1(v.h)}h</div><div class="ht"><i style="width:${(v.h / mx) * 100}%"></i></div></div>`).join('') || '<div class="muted small">No open tasks</div>';
   }
 
-  /* ---------- Results ---------- */
+  /* ---------- Results (minimal) ---------- */
   function renderProof() {
     const E = window.CRUNCH_EVAL;
     if (!E) { $('proof').innerHTML = '<div class="empty">Run <code>node eval/run_eval.js</code> to generate results.</div>'; return; }
-    const s = E.summary;
-    const P = [
-      { k: 'crunch', name: 'Dueline', color: 'var(--viz-accent)' },
-      { k: 'lastminute', name: 'Last-minute', color: 'var(--viz-gray-1)' },
-      { k: 'duedate', name: 'Grind', color: 'var(--viz-gray-2)' },
-    ];
-    const ours = s.crunch, lm = s.lastminute, gr = s.duedate;
+    const s = E.summary, ours = s.crunch, lm = s.lastminute, gr = s.duedate;
     const fewer = Math.round((1 - ours.crunchDays / gr.crunchDays) * 100);
-    const legend = `<div class="legend2">${P.map((p) => `<span><i style="background:${p.color}"></i>${p.name}</span>`).join('')}<span class="muted">Grind = works every free hour</span></div>`;
-    let html = `<div class="res-top">
-      <div class="hero">${decoTile(2, 44)}<div class="hv">${Math.round(ours.onTimePct)}%</div><div class="hl">of deadlines met on time</div><div class="hc">vs ${Math.round(lm.onTimePct)}% working last-minute <span class="delta">+${Math.round(ours.onTimePct - lm.onTimePct)} pts</span></div></div>
-      <div class="kt">${decoTile(0)}<div class="kl">Work left undone</div><div class="kv">${f1(ours.unfinishedHours)}<small>h</small></div><div class="ks">vs ${f1(lm.unfinishedHours)}h last-minute</div></div>
-      <div class="kt">${decoTile(3)}<div class="kl">Crunch days</div><div class="kv">−${fewer}<small>%</small></div><div class="ks">vs grinding every free hour</div></div>
-      <div class="kt">${decoTile(1)}<div class="kl">Test semesters</div><div class="kv">${E.scenarios}</div><div class="ks">never used for tuning</div></div>
-    </div>`;
-
-    // Dot strip: on-time rate per semester, one row per approach
-    html += `<div class="viz-card"><div class="viz-title"><h3>On-time rate in every semester</h3><span class="sub">each dot is one simulated semester</span><span class="spacer"></span>${legend}</div><div id="dotStrip"></div>
-      <div class="note">Grinding meets ${f1(gr.onTimePct - ours.onTimePct)} points more deadlines, at the cost of ${fewer}% more crunch days.</div>
-      <details class="tview"><summary>View as table</summary><table><thead><tr><th>Semester</th>${P.map((p) => `<th>${p.name}</th>`).join('')}</tr></thead><tbody>${E.rows.map((r) => `<tr><td>#${r.seed}</td>${P.map((p) => `<td>${Math.round(r[p.k].onTimePct)}%</td>`).join('')}</tr>`).join('')}</tbody></table></details></div>`;
-
-    // Small multiples: one card per metric
-    const M = [
-      ['Deadlines missed', 'missed', 'per semester · fewer is better', false],
-      ['Work left undone', 'unfinishedHours', 'hours at the deadline · less is better', false],
-      ['Crunch days', 'crunchDays', 'days with 7h+ of work · fewer is better', false],
-      ['Busiest day', 'peakDay', 'hours · lower is better', false],
-      ['Finished early', 'avgBufferDays', 'days before the deadline · more is better', true],
-      ['Part 2 before Part 1', 'depViolations', 'order mistakes per semester · fewer is better', false],
-    ];
-    html += `<div class="section-h">Every metric</div><div class="mult">${M.map(([title, k, unit]) => {
-      const mx = Math.max(...P.map((p) => s[p.k][k])) || 1;
-      return `<div class="mcard"><h4>${title}</h4><div class="mu">${unit}</div>${P.map((p, i) => `<div class="mbar ${i === 0 ? 'ours' : ''}"><span class="n">${p.name}</span><span class="t"><i style="width:${(s[p.k][k] / mx) * 100}%;background:${p.color}"></i></span><span class="v">${f1(s[p.k][k])}</span></div>`).join('')}</div>`;
-    }).join('')}</div>
-    <details class="tview"><summary>View as table</summary><table><thead><tr><th>Metric (mean per semester)</th>${P.map((p) => `<th>${p.name}</th>`).join('')}</tr></thead><tbody>${[['On-time %', 'onTimePct'], ...M.map((m) => [m[0], m[1]])].map(([t, k]) => `<tr><td>${t}</td>${P.map((p) => `<td>${f1(s[p.k][k])}</td>`).join('')}</tr>`).join('')}</tbody></table></details>`;
-
-    // Method as numbers
-    html += `<div class="section-h">How it was tested</div><div class="chips">
-      <div class="chipn"><b>${E.scenarios}</b><span>test semesters</span></div>
-      <div class="chipn"><b>1.25×</b><span>typical effort overrun</span></div>
-      <div class="chipn"><b>+1</b><span>surprise task each</span></div>
-      <div class="chipn"><b>−3 days</b><span>one deadline moved up</span></div>
-      <div class="chipn"><b>2</b><span>sick days each</span></div>
-      <div class="chipn"><b>30</b><span>tuning semesters, kept apart</span></div>
-    </div>
-    <div class="note">Every approach replans daily with only what a student would know that day. Simulated semesters, not real students. Reproduce with <code>node eval/run_eval.js</code>.</div>`;
-    $('proof').innerHTML = html;
-    drawDots(E, P);
-  }
-
-  function drawDots(E, P) {
-    const box = $('dotStrip');
-    if (!box) return;
-    const W = Math.max(340, box.clientWidth || 1000), rowH = 58, L = 96, R = 56, T = 8, B = 28;
-    const H = T + rowH * P.length + B;
-    const x = (v) => L + (v / 100) * (W - L - R);
-    let svg = `<svg class="viz-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="On-time rate per simulated semester for each approach">`;
-    [0, 25, 50, 75, 100].forEach((v) => { svg += `<line class="grid" x1="${x(v)}" x2="${x(v)}" y1="${T}" y2="${H - B}"/><text class="tick" x="${x(v)}" y="${H - 8}" text-anchor="middle">${v}%</text>`; });
-    const tips = [];
-    P.forEach((p, ri) => {
-      const cy = T + ri * rowH + rowH / 2;
-      svg += `<text x="${L - 14}" y="${cy + 4}" text-anchor="end" font-size="12.5" fill="var(--text)" font-weight="${ri === 0 ? 600 : 400}">${p.name}</text>`;
-      const buckets = {};
-      E.rows.forEach((r) => {
-        const v = r[p.k].onTimePct;
-        const b = Math.round(v / 2);
-        const k = buckets[b] = (buckets[b] || 0) + 1;
-        const off = (k % 2 ? 1 : -1) * Math.floor(k / 2) * 5;
-        const cyy = cy + Math.max(-rowH / 2 + 6, Math.min(rowH / 2 - 6, off));
-        tips.push({ value: `${Math.round(v)}% on time`, label: `Semester #${r.seed} · ${p.name}`, rows: P.filter((q) => q.k !== p.k).map((q) => ({ color: q.color, text: `${q.name}: ${Math.round(r[q.k].onTimePct)}%` })) });
-        svg += `<circle cx="${x(v)}" cy="${cyy}" r="4" fill="${p.color}" stroke="var(--surface)" stroke-width="2"/>`;
-        svg += `<circle class="hit" cx="${x(v)}" cy="${cyy}" r="9" tabindex="0" data-ti="${tips.length - 1}"/>`;
-      });
-      const mean = E.summary[p.k].onTimePct;
-      svg += `<line x1="${x(mean)}" x2="${x(mean)}" y1="${cy - rowH / 2 + 4}" y2="${cy + rowH / 2 - 4}" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/>`;
-      svg += `<text x="${W - R + 10}" y="${cy + 4}" font-size="13" font-weight="700" fill="var(--text)">${Math.round(mean)}%</text>`;
-    });
-    box.innerHTML = svg + '</svg>';
-    bindTips(box, tips);
+    const bar = (name, v, color, strong) => `<div class="cb ${strong ? 'ours' : ''}"><span class="cn">${name}</span><span class="ct"><i style="width:${v}%;background:${color}"></i></span><span class="cv">${Math.round(v)}%</span></div>`;
+    const P = [['Dueline', 'crunch'], ['Last-minute', 'lastminute'], ['Grind', 'duedate']];
+    const rows = [['On time (%)', 'onTimePct'], ['Deadlines missed', 'missed'], ['Work left undone (h)', 'unfinishedHours'], ['Crunch days (7h+)', 'crunchDays'], ['Busiest day (h)', 'peakDay'], ['Days finished early', 'avgBufferDays'], ['Part 2 before Part 1', 'depViolations']];
+    $('proof').innerHTML = `
+      <section class="rhero">
+        <div class="rh-num">
+          <div class="big">${Math.round(ours.onTimePct)}<span>%</span></div>
+          <div class="cap">of deadlines met on time</div>
+        </div>
+        <div class="rh-bars">
+          ${bar('Dueline', ours.onTimePct, 'var(--viz-accent)', true)}
+          ${bar('Last-minute', lm.onTimePct, 'var(--viz-gray-1)', false)}
+          <div class="rh-delta">+${Math.round(ours.onTimePct - lm.onTimePct)} points over studying last-minute</div>
+        </div>
+      </section>
+      <section class="rtiles">
+        <div class="rt2">${decoTile(0)}<b>${f1(ours.unfinishedHours)}<small>h</small></b><span>work left undone at deadlines</span><em>vs ${f1(lm.unfinishedHours)}h last-minute</em></div>
+        <div class="rt2">${decoTile(2)}<b>${f1(ours.avgBufferDays)}<small> days</small></b><span>finished before the deadline</span><em>vs ${f1(lm.avgBufferDays)} days last-minute</em></div>
+        <div class="rt2">${decoTile(3)}<b>−${fewer}<small>%</small></b><span>fewer crunch days</span><em>vs grinding every free hour (${Math.round(gr.onTimePct)}% on time)</em></div>
+      </section>
+      <details class="rmethod">
+        <summary>How we tested</summary>
+        <p>${E.scenarios} simulated semesters that were never used for tuning. Each one has effort overruns (1.25× typical), a surprise task, a deadline moved 3 days earlier and 2 sick days. Every approach replans daily with only what a student would know that day. Reproduce with <code>node eval/run_eval.js</code>.</p>
+        <table><thead><tr><th>Mean per semester</th>${P.map(([n]) => `<th>${n}</th>`).join('')}</tr></thead>
+          <tbody>${rows.map(([t, k]) => `<tr><td>${t}</td>${P.map(([, key]) => `<td>${f1(s[key][k])}</td>`).join('')}</tr>`).join('')}</tbody></table>
+      </details>`;
   }
 
   // Charts size to their container, so redraw on resize and when a tab opens.
   let rz;
-  window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (isActive('tab-home')) renderRadar(); if (isActive('tab-priorities')) renderPrio(); if (isActive('tab-workload')) renderWorkload(); if (isActive('tab-proof')) drawDots(window.CRUNCH_EVAL, [{ k: 'crunch', name: 'Dueline', color: 'var(--viz-accent)' }, { k: 'lastminute', name: 'Last-minute', color: 'var(--viz-gray-1)' }, { k: 'duedate', name: 'Grind', color: 'var(--viz-gray-2)' }]); }, 150); });
-  $('tabs').addEventListener('click', () => { requestAnimationFrame(() => { if (isActive('tab-priorities')) renderPrio(); if (isActive('tab-workload')) renderWorkload(); if (isActive('tab-proof')) renderProof(); }); });
+  window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (isActive('tab-home')) renderRadar(); if (isActive('tab-priorities')) renderPrio(); if (isActive('tab-workload')) renderWorkload(); }, 150); });
+  $('tabs').addEventListener('click', () => { requestAnimationFrame(() => { if (isActive('tab-priorities')) renderPrio(); if (isActive('tab-workload')) renderWorkload(); }); });
 
   /* ---------- Home: deadlines-ahead card ---------- */
   function renderRadar() {
