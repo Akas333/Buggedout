@@ -3,123 +3,186 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Crunch: Semester Planner</title>
+<title>Dueline: Semester Planner</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+<!-- Icon sprite (Lucide-style line icons, inlined so the app works offline) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <symbol id="i-cap" viewBox="0 0 24 24"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/><path d="M22 10v6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+    <symbol id="i-calendar-x" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M10 14l4 4M14 14l-4 4"/></symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></symbol>
+    <symbol id="i-clipboard" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></symbol>
+    <symbol id="i-coffee" viewBox="0 0 24 24"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><path d="M6 2v2M10 2v2M14 2v2"/></symbol>
+    <symbol id="i-trend" viewBox="0 0 24 24"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4M10 9H8M16 13H8M16 17H8"/></symbol>
+  </defs>
+</svg>
+
 <header class="top">
-  <div class="brand"><div class="logo">c</div><span class="brand-name">Crunch</span></div>
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" stroke-width="4" stroke-dasharray="58 100" stroke-linecap="round" transform="rotate(-210 16 16)"/><circle cx="16" cy="16" r="4" fill="currentColor"/></svg>
+    <span class="brand-name">Dueline</span>
+  </div>
   <nav class="tabs" id="tabs">
     <button data-tab="home" class="active">Home</button>
     <button data-tab="plan">Schedule</button>
     <button data-tab="priorities">Priorities</button>
     <button data-tab="tasks">Tasks</button>
-    <button data-tab="pressure">Pressure map</button>
-    <button data-tab="proof">Proof</button>
+    <button data-tab="pressure">Workload</button>
+    <button data-tab="proof">Results</button>
   </nav>
   <div class="top-actions">
     <span class="today" id="todayLabel"></span>
-    <button class="btn ghost small" id="btnDemo">Demo semester</button>
-    <button class="btn ghost small" id="btnReset">Reset</button>
+    <button class="btn primary small" id="btnNewTop"><svg class="i"><use href="#i-plus"/></svg>New deadline</button>
+    <button class="icon-btn" id="bellBtn" aria-label="At-risk alerts"><svg class="i"><use href="#i-bell"/></svg><i class="bell-dot" id="bellDot" hidden></i></button>
+    <button class="icon-btn" id="menuBtn" aria-label="Sample data and reset" title="Sample data"><svg class="i"><use href="#i-user"/></svg></button>
   </div>
 </header>
 
-<!-- HOME: three columns like a dashboard -->
 <main class="tab active" id="tab-home">
   <div class="home">
     <section class="col col-left">
       <div class="profile">
         <div class="ring" id="healthRing"></div>
         <h2>Your semester</h2>
-        <div class="muted small" id="healthLabel"></div>
+        <div class="level" id="healthLabel"></div>
         <div class="nudge" id="healthNudge"></div>
       </div>
       <div class="stats" id="kpis"></div>
 
       <div class="cta-card">
-        <div class="cta-emoji">📋</div>
+        <div class="cta-icon"><svg class="i"><use href="#i-clipboard"/></svg></div>
         <h3>Got new deadlines?</h3>
-        <p>Paste from syllabi, VTOP or WhatsApp. Put course headers on their own line.</p>
-        <textarea id="inputText" spellcheck="false" placeholder="BCSE302L - Database Systems&#10;DA 1 due 20 Oct (10%)&#10;CAT 2 on 3 Nov"></textarea>
-        <button class="btn primary" id="btnExtract">Extract tasks</button>
+        <p>Add them one at a time, or paste a whole syllabus or class announcement.</p>
+        <button class="btn primary" id="btnOpenPaste">Add deadlines</button>
         <div id="extractInfo" class="muted small"></div>
       </div>
 
       <details class="settings">
-        <summary>Your free time &amp; busy days</summary>
+        <summary><svg class="i"><use href="#i-sliders"/></svg>Study hours &amp; busy days</summary>
         <p class="muted small">Hours you can study on each day of the week</p>
         <div class="avail" id="availGrid"></div>
         <div class="row"><label>Finish early by <input type="number" id="bufferDays" min="0" max="5" step="1"> day(s)</label></div>
-        <div class="row"><label title="Most students underestimate. Crunch learns your real ratio from logged hours.">Reality check: I take <input type="number" id="prior" min="1" max="2" step="0.05">× my estimates</label></div>
+        <div class="row"><label title="Most students underestimate. Dueline learns your real ratio from logged hours.">Estimate multiplier <input type="number" id="prior" min="1" max="2" step="0.05">×</label></div>
         <h4>Busy days</h4>
         <div id="commitList"></div>
         <form class="commit-add" id="commitForm">
-          <input type="date" id="cDate" required>
-          <input type="number" id="cHours" min="0.5" max="24" step="0.5" placeholder="h" required>
-          <input type="text" id="cLabel" placeholder="Fest, trip…">
+          <input type="date" id="cDate" required aria-label="Date">
+          <input type="number" id="cHours" min="0.5" max="24" step="0.5" placeholder="Hours" required aria-label="Hours">
+          <input type="text" id="cLabel" placeholder="Reason" aria-label="Reason">
           <button class="btn small">Add</button>
         </form>
       </details>
     </section>
 
     <section class="col col-mid">
-      <div class="col-head"><h2>Courses</h2><span class="muted small" id="courseMeta"></span></div>
+      <div class="col-head">
+        <h2>Courses</h2>
+        <button class="icon-btn sm" id="btnNewMid" aria-label="New deadline" title="New deadline"><svg class="i"><use href="#i-plus"/></svg></button>
+      </div>
       <div id="changeLog"></div>
       <div id="courseList"></div>
     </section>
 
     <section class="col col-right">
       <div class="cal-head">
-        <button class="round" id="weekPrev" aria-label="Previous week">‹</button>
+        <button class="icon-btn sm" id="weekPrev" aria-label="Previous week"><svg class="i"><use href="#i-left"/></svg></button>
         <strong id="monthLabel"></strong>
-        <button class="round" id="weekNext" aria-label="Next week">›</button>
+        <button class="icon-btn sm" id="weekNext" aria-label="Next week"><svg class="i"><use href="#i-right"/></svg></button>
       </div>
       <div class="strip" id="dayStrip"></div>
       <div id="agenda"></div>
       <div class="day-actions">
-        <button class="btn primary" id="btnDayDone">✓ Finished today's plan</button>
-        <button class="btn" id="btnDayMissed">✗ I skipped today</button>
-        <button class="btn ghost" id="btnSurprise">+ Surprise assignment</button>
+        <button class="btn primary" id="btnDayDone"><svg class="i"><use href="#i-check"/></svg>Mark today complete</button>
+        <div class="two">
+          <button class="btn" id="btnDayMissed"><svg class="i"><use href="#i-calendar-x"/></svg>Skip today</button>
+          <button class="btn" id="btnSurprise"><svg class="i"><use href="#i-zap"/></svg>Surprise task</button>
+        </div>
       </div>
     </section>
   </div>
 </main>
 
 <main class="tab page" id="tab-plan">
-  <div class="plan-bar"><div><h2>Full schedule</h2><span class="muted small" id="planMeta"></span></div></div>
+  <div class="page-head"><h2>Schedule</h2><span class="muted small" id="planMeta"></span></div>
   <div class="week-grid" id="planGrid"></div>
 </main>
 
 <main class="tab page" id="tab-priorities">
-  <h2>What to work on, and why</h2>
-  <p class="muted small">Score = urgency (40) + grade weight (25) + effort left (15) + unblocks other work (20). Every number has a reason.</p>
+  <div class="page-head"><h2>Priorities</h2><span class="muted small">Score = urgency (40) + grade weight (25) + effort left (15) + unblocks other work (20)</span></div>
   <div id="prioList"></div>
 </main>
 
 <main class="tab page" id="tab-tasks">
-  <div class="plan-bar"><h2>Tasks</h2><button class="btn small" id="btnAddTask">+ Add task</button></div>
+  <div class="page-head row-between"><h2>Tasks</h2><button class="btn primary small" id="btnAddTask"><svg class="i"><use href="#i-plus"/></svg>New deadline</button></div>
   <div class="table-wrap"><table class="tasks" id="taskTable"></table></div>
   <div id="ignoredBox"></div>
 </main>
 
 <main class="tab page" id="tab-pressure">
-  <h2>Pressure map</h2>
-  <p class="muted small">Daily load in your plan compared with a last-minute student given the same tasks and free time.</p>
-  <div class="legend"><span class="sw sw-ours"></span>Crunch plan <span class="sw sw-base"></span>Last-minute <span class="sw sw-cap"></span>Free time <span class="sw sw-due"></span>Deadline</div>
+  <div class="page-head"><h2>Workload</h2><span class="muted small">Daily hours in your plan compared with a last-minute approach on the same tasks and free time</span></div>
+  <div class="legend"><span><i class="sw sw-ours"></i>Dueline plan</span><span><i class="sw sw-base"></i>Last-minute</span><span><i class="sw sw-cap"></i>Free time</span><span><i class="sw sw-due"></i>Deadline</span></div>
   <div id="pressureChart" class="chart"></div>
   <div class="cmp" id="pressureCmp"></div>
   <div id="hotspots"></div>
 </main>
 
 <main class="tab page" id="tab-proof">
-  <h2>Does it actually work?</h2>
+  <div class="page-head"><h2>Results</h2><span class="muted small">Measured on 50 simulated semesters the planner was never tuned on</span></div>
   <div id="proof"></div>
 </main>
 
+<!-- Task details -->
 <div class="drawer" id="drawer" hidden>
   <div class="drawer-card">
-    <button class="close" id="drawerClose" aria-label="Close">×</button>
+    <button class="close" id="drawerClose" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button>
     <div id="drawerBody"></div>
+  </div>
+</div>
+
+<!-- New deadline popup -->
+<div class="drawer" id="pasteModal" hidden>
+  <div class="drawer-card">
+    <button class="close" id="pasteClose" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button>
+    <h3>New deadline</h3>
+    <div class="seg" role="tablist">
+      <button class="active" data-mode="one" type="button">Add one</button>
+      <button data-mode="many" type="button">Paste many</button>
+    </div>
+    <form id="oneForm" class="form-grid">
+      <label class="full">Title<input id="fTitle" required placeholder="e.g. DA 3: Transactions case study"></label>
+      <label>Course<input id="fCourse" list="courseOptions" placeholder="e.g. BCSE302L - Database Systems"></label>
+      <label>Type<select id="fType"></select></label>
+      <label>Due date<input type="date" id="fDue" required></label>
+      <label>Estimated hours<input type="number" id="fEffort" min="0.5" step="0.5" placeholder="Auto"></label>
+      <label>Grade weight (%)<input type="number" id="fWeight" min="0" max="100" step="1" placeholder="Optional"></label>
+      <label>Depends on<select id="fDep"><option value="">Nothing</option></select></label>
+      <datalist id="courseOptions"></datalist>
+      <div class="actions full"><button class="btn primary" type="submit">Add deadline</button><button class="btn ghost pasteCancel" type="button">Cancel</button></div>
+    </form>
+    <div id="manyPane" hidden>
+      <p class="muted small">Paste from a syllabus, VTOP or a class group. Put course headers on their own line. Lines without a date are skipped, never guessed.</p>
+      <textarea id="inputText" spellcheck="false" placeholder="BCSE302L - Database Systems&#10;DA 1 due 20 Oct (10%)&#10;CAT 2 on 3 Nov"></textarea>
+      <div class="actions"><button class="btn primary" id="btnExtract" type="button">Extract deadlines</button><button class="btn ghost pasteCancel" type="button">Cancel</button>
+        <span class="spacer"></span><button class="btn ghost small" id="btnDemo" type="button">Load sample semester</button><button class="btn ghost small" id="btnReset" type="button">Clear all</button></div>
+    </div>
   </div>
 </div>
 <div class="toast" id="toast" hidden></div>

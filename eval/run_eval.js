@@ -61,7 +61,7 @@ function makeScenario(seed) {
 const TUNED = JSON.parse(fs.readFileSync(path.join(__dirname, 'tuned.json'), 'utf8'));
 
 const POLICIES = {
-  crunch: { label: 'Crunch (ours)', fn: (t, s) => C.planCrunch(t, { ...s, ...TUNED }), learn: true, prior: TUNED.prior },
+  crunch: { label: 'Dueline (ours)', fn: (t, s) => C.planCrunch(t, { ...s, ...TUNED }), learn: true, prior: TUNED.prior },
   duedate: { label: 'Grind: every free hour', fn: C.planDueDate, learn: false },
   lastminute: { label: 'Last-minute student', fn: C.planLastMinute, learn: false },
 };

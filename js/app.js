@@ -1,4 +1,4 @@
-/* Crunch UI. All planning logic lives in engine.js. */
+/* Dueline UI. All planning logic lives in engine.js. */
 (function () {
   'use strict';
   const C = window.Crunch;
@@ -6,7 +6,8 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const PALETTE = ['#c6f432', '#6aa7ff', '#ff8fd1', '#ffb547', '#3ddc97', '#b28dff', '#5fe3ea', '#ff7a59'];
-  const KEY = 'crunch-state-v2';
+  const KEY = 'dueline-state-v1';
+  const ic = (name, cls = '') => `<svg class="i ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 
   let state = loadState() || demoState();
   let current = null; // last computed plan bundle
@@ -88,11 +89,14 @@
     const R = 42, L = 2 * Math.PI * R;
     $('healthRing').innerHTML = `<svg width="96" height="96" viewBox="0 0 96 96"><circle cx="48" cy="48" r="${R}" fill="none" stroke="#fdecea" stroke-width="7"/>
       <circle cx="48" cy="48" r="${R}" fill="none" stroke="#ee6352" stroke-width="7" stroke-linecap="round" stroke-dasharray="${L * onTrack} ${L}" transform="rotate(-90 48 48)"/></svg>
-      <div class="pct">${Math.round(onTrack * 100)}%</div>`;
-    $('healthLabel').textContent = atRisk.length ? `${atRisk.length} deadline(s) at risk` : 'Every deadline on track';
+      <div class="face">${ic('cap')}</div>`;
+    $('healthLabel').innerHTML = `<div class="level">${Math.round(onTrack * 100)}% on track · ${atRisk.length ? `${atRisk.length} deadline(s) at risk` : 'every deadline fits'}</div>`;
+    $('bellDot').hidden = !atRisk.length;
+    $('bellBtn').title = atRisk.length ? `At risk: ${atRisk.map((t) => t.title).join(', ')}` : 'No deadlines at risk';
+    $('bellBtn').onclick = () => (atRisk.length ? openTask(atRisk[0].id) : toast('No deadlines at risk'));
     const weekEnd = today + 6;
     const weekH = plan.days.filter((d) => d.day <= weekEnd).reduce((a, d) => a + d.load, 0);
-    $('healthNudge').innerHTML = `🗓️ Only <b>${C.round(weekH, 1)}h</b> of study planned this week`;
+    $('healthNudge').innerHTML = `${ic('calendar')}${C.round(weekH, 1)}h of study planned this week`;
     $('kpis').innerHTML = `
       <div class="stat"><div class="value">${live.length}</div><div class="label">Open<br>tasks</div></div>
       <div class="stat"><div class="value">${Math.round(hoursLeft)}h</div><div class="label">Work left<br>(×${ratio} reality)</div></div>
@@ -110,7 +114,6 @@
     const { plan } = current;
     const today = C.toDay(state.today);
     const courses = [...new Set(state.tasks.map((t) => t.course))];
-    $('courseMeta').textContent = `${courses.length} course(s)`;
     $('courseList').innerHTML = courses.map((c, i) => {
       const ts = state.tasks.filter((t) => t.course === c);
       const done = ts.filter((t) => t.completed).length;
@@ -121,19 +124,35 @@
       const risk = open.find((t) => plan.unfinished[t.id] || plan.finish[t.id] == null || plan.finish[t.id] > C.toDay(t.due));
       const nxt = open[0];
       const dd = nxt ? C.toDay(nxt.due) - today : 0;
-      const chip = risk ? `<div class="chip">⚠ ${esc(risk.title)} won't fit before ${C.fmtDay(C.toDay(risk.due))}. Open it for options</div>`
-        : nxt && dd <= 3 ? `<div class="chip">⏰ ${esc(nxt.title)} due ${dd <= 0 ? 'today' : dd === 1 ? 'tomorrow' : 'in ' + dd + ' days'}</div>` : '';
+      const chip = risk ? `<div class="chip">${ic('alert')}${esc(risk.title)} won't fit before ${C.fmtDay(C.toDay(risk.due))}. Open it for options</div>`
+        : nxt && dd <= 3 ? `<div class="chip">${ic('clock')}${esc(nxt.title)} due ${dd <= 0 ? 'today' : dd === 1 ? 'tomorrow' : 'in ' + dd + ' days'}</div>` : '';
       const { code, name } = courseName(c);
       return `<div class="course" data-course="${esc(c)}" data-id="${nxt ? nxt.id : ''}">
-        <div class="tile" style="background:${TILE_BG[i % TILE_BG.length]}">${esc(initials(c))}</div>
-        <div><h3>${esc(name)}${code ? ` <span class="muted small" style="font-weight:500">${esc(code)}</span>` : ''}</h3>
-          <div class="meta"><b>${done}/${ts.length}</b> tasks · <b>${pct}%</b> of ${C.round(total, 1)}h</div>
+        <div class="tile" style="background:${TILE_BG[i % TILE_BG.length]}" title="${esc(initials(c))}">${SHAPES[i % SHAPES.length]}</div>
+        <div><h3>${esc(name)}</h3>
+          <div class="meta"><b>${done}</b><span>/${ts.length} tasks</span> &nbsp; <b>${pct}%</b>${code ? ` <span>· ${esc(code)}</span>` : ''}</div>
           <div class="bar"><i style="width:${pct}%"></i></div>
-          <div class="tasklets">${ts.map((t) => `<span class="tasklet ${t.completed ? 'done' : ''}" data-id="${t.id}">${esc(t.title.replace(code + ' ', ''))} · ${C.fmtDay(C.toDay(t.due)).slice(4)}</span>`).join('')}</div>
-        </div>${chip}</div>`;
+        </div><button class="more" aria-label="Course tasks" data-course="${esc(c)}">${ic('more')}</button>${chip}</div>`;
     }).join('') || '<div class="empty">No tasks yet. Paste your deadlines on the left.</div>';
-    $('courseList').querySelectorAll('.tasklet').forEach((el) => el.addEventListener('click', (e) => { e.stopPropagation(); openTask(el.dataset.id); }));
+    $('courseList').querySelectorAll('.more').forEach((el) => el.addEventListener('click', (e) => { e.stopPropagation(); openCourse(el.dataset.course); }));
     $('courseList').querySelectorAll('.course').forEach((el) => el.addEventListener('click', () => el.dataset.id && openTask(el.dataset.id)));
+  }
+
+  const SHAPES = [
+    '<svg width="44" height="44" viewBox="0 0 44 44"><path d="M4 26a18 18 0 0 1 36 0z" fill="#111"/><path d="M8 30h28l-4 10H12z" fill="#111"/></svg>',
+    '<svg width="44" height="44" viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="5"><circle cx="13" cy="13" r="7"/><circle cx="31" cy="13" r="7"/><circle cx="13" cy="31" r="7"/><circle cx="31" cy="31" r="7"/></svg>',
+    '<svg width="44" height="44" viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="4"><circle cx="22" cy="22" r="19"/><circle cx="22" cy="22" r="12"/><circle cx="22" cy="22" r="5"/></svg>',
+    '<svg width="44" height="44" viewBox="0 0 44 44" fill="none" stroke="#111" stroke-width="5" stroke-linejoin="round"><path d="M22 3v38M5 12l34 20M5 32l34-20"/></svg>',
+    '<svg width="44" height="44" viewBox="0 0 44 44" fill="#111"><circle cx="22" cy="10" r="9"/><circle cx="22" cy="34" r="9"/><circle cx="10" cy="22" r="9"/><circle cx="34" cy="22" r="9"/><circle cx="22" cy="22" r="8"/></svg>',
+    '<svg width="44" height="44" viewBox="0 0 44 44" fill="#111"><path d="M22 2l20 20-20 20L2 22z"/></svg>',
+  ];
+  const clockIcon = (c) => `<svg width="13" height="13" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="${c}"/><path d="M12 6v6l4 2" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>`;
+  function openCourse(c) {
+    const ts = state.tasks.filter((t) => t.course === c).sort((a, b) => a.due.localeCompare(b.due));
+    $('drawerBody').innerHTML = `<h3>${esc(courseName(c).name)}</h3><div class="muted small">${esc(c)}</div>
+      ${ts.map((t) => `<div class="slot" data-id="${t.id}" style="margin-top:10px"><div class="time">${t.completed ? ic('check-circle') + 'Done' : ic('flag') + 'Due ' + C.fmtDay(C.toDay(t.due))}</div><div class="title">${esc(t.title)}</div><div class="sub">${t.effortH}h · ${t.weight == null ? 'weight unknown' : t.weight + '%'}</div></div>`).join('')}`;
+    $('drawer').hidden = false;
+    $('drawerBody').querySelectorAll('[data-id]').forEach((el) => el.addEventListener('click', () => openTask(el.dataset.id)));
   }
 
   // Sessions get clock times: weekday evenings, weekend mornings, 15 min breaks.
@@ -163,16 +182,16 @@
     let h = startHour(selDay), html = `<div class="agenda-head"><span>${selDay === today ? 'Today' : C.fmtDay(selDay)}</span><span>${entry ? C.round(entry.load, 1) : 0}h of ${C.round(C.capacityOn(selDay, current.settings), 1)}h free</span></div>`;
     state.tasks.filter((t) => C.toDay(t.due) === selDay).forEach((t) => {
       const ok = t.completed || (plan.finish[t.id] != null && plan.finish[t.id] <= selDay && !plan.unfinished[t.id]);
-      html += `<div class="slot due ${ok ? 'ok' : ''}" data-id="${t.id}"><div class="badge">${ok ? 'READY' : 'DUE'}</div><div><div class="title">${esc(t.title)}</div><div class="sub">${esc(courseName(t.course).name)} · ${ok ? 'finished in plan' : 'at risk'}</div></div></div>`;
+      html += `<div class="slot due ${ok ? 'ok' : ''}" data-id="${t.id}"><div class="badge">${ic(ok ? 'check' : 'flag')}${ok ? 'Ready' : 'Due'}</div><div><div class="title">${esc(t.title)}</div><div class="sub">${esc(courseName(t.course).name)} · ${ok ? 'finished in plan' : 'at risk'}</div></div></div>`;
     });
     (entry ? entry.sessions : []).forEach((s) => {
       const t = taskById(s.id);
       const color = TILE_BG[[...new Set(state.tasks.map((x) => x.course))].indexOf(t.course) % TILE_BG.length];
-      html += `<div class="slot" data-id="${t.id}"><div class="time"><i style="background:${color}"></i>${clock(h)} - ${clock(h + s.hours)}</div>
+      html += `<div class="slot" data-id="${t.id}"><button class="more" aria-hidden="true" tabindex="-1">${ic('more')}</button><div class="time"><span style="color:${color === '#f2b8b5' ? '#e5484d' : color};display:inline-flex">${ic('clock')}</span>${clock(h)} - ${clock(h + s.hours)}</div>
         <div class="title">${esc(t.title)}</div><div class="sub">${esc(courseName(t.course).name)} · ${C.round(s.hours, 1)}h</div></div>`;
       h += s.hours + 0.25;
     });
-    if (!entry || !entry.sessions.length) html += `<div class="empty-day">${selDay < today ? 'Past day' : 'Nothing planned. Rest day 🌿'}</div>`;
+    if (!entry || !entry.sessions.length) html += `<div class="empty-day">${ic(selDay < today ? 'calendar' : 'coffee')}${selDay < today ? 'Past day' : 'Nothing planned. Rest day'}</div>`;
     $('agenda').innerHTML = html;
     $('agenda').querySelectorAll('[data-id]').forEach((el) => el.addEventListener('click', () => openTask(el.dataset.id)));
   }
@@ -196,7 +215,7 @@
       const col = pct >= 90 ? 'var(--danger)' : pct >= 70 ? 'var(--warn)' : 'var(--accent)';
       const dues = (dueByDay[d] || []).map((t) => {
         const ok = t.completed || (plan.finish[t.id] != null && plan.finish[t.id] <= d && !plan.unfinished[t.id]);
-        return `<div class="due-chip ${ok ? 'done' : ''}" data-id="${t.id}" title="${esc(t.title)}">${ok ? '✓' : '⚑'} ${esc(t.title)}</div>`;
+        return `<div class="due-chip ${ok ? 'done' : ''}" data-id="${t.id}" title="${esc(t.title)}">${esc(t.title)}</div>`;
       }).join('');
       const sess = entry.sessions.map((s) => {
         const t = taskById(s.id);
@@ -209,7 +228,9 @@
     $('planGrid').innerHTML = html;
     $('planGrid').querySelectorAll('[data-id]').forEach((el) => el.addEventListener('click', () => openTask(el.dataset.id)));
     const log = state.log;
-    $('changeLog').innerHTML = log ? `<div class="log"><strong>Replanned:</strong> ${esc(log.title)}<ul>${log.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul></div>` : '';
+    $('changeLog').innerHTML = log ? `<div class="log"><button class="log-x" aria-label="Dismiss">${ic('x')}</button><strong>Plan updated</strong> · ${esc(log.title)}<ul>${log.items.slice(0, 3).map((i) => `<li>${esc(i)}</li>`).join('')}</ul>${log.items.length > 3 ? `<div class="muted small">+${log.items.length - 3} more change(s)</div>` : ''}</div>` : '';
+    const lx = $('changeLog').querySelector('.log-x');
+    if (lx) lx.addEventListener('click', () => { state.log = null; save(); $('changeLog').innerHTML = ''; });
   }
   const fmtH = (h) => `${C.round(h, 1)}h`;
   const shortCourse = (c) => (c.match(/^[A-Z]{2,5}\s?\d{3,4}[A-Z]?/) || [c])[0];
@@ -285,7 +306,7 @@
       const cap = C.capacityOn(d, settings);
       svg += `<rect x="${x + 1}" y="${y(cap)}" width="${bw - 2}" height="${H - pad - y(cap)}" fill="#f4f4f5" rx="3"/>`;
       const a = get(plan, d), b = get(base, d);
-      svg += `<rect x="${x + 3}" y="${y(a)}" width="${(bw - 6) / 2}" height="${H - pad - y(a)}" fill="#ee6352" rx="2"><title>${C.fmtDay(d)}: Crunch ${a}h</title></rect>`;
+      svg += `<rect x="${x + 3}" y="${y(a)}" width="${(bw - 6) / 2}" height="${H - pad - y(a)}" fill="#ee6352" rx="2"><title>${C.fmtDay(d)}: Dueline ${a}h</title></rect>`;
       svg += `<rect x="${x + 3 + (bw - 6) / 2}" y="${y(b)}" width="${(bw - 6) / 2}" height="${H - pad - y(b)}" fill="#3a3a40" rx="2"><title>${C.fmtDay(d)}: last-minute ${b}h</title></rect>`;
       if (live.some((t) => C.toDay(t.due) === d)) svg += `<circle cx="${x + bw / 2}" cy="${pad - 10}" r="4" fill="#f5a524"><title>${esc(live.filter((t) => C.toDay(t.due) === d).map((t) => t.title).join(', '))}</title></circle>`;
       if (i % Math.ceil(n / 20) === 0) svg += `<text x="${x + bw / 2}" y="${H - 8}" fill="#74747a" font-size="10" text-anchor="middle">${C.fmtDay(d).slice(4)}</text>`;
@@ -293,7 +314,7 @@
     $('pressureChart').innerHTML = svg + '</svg>';
     const cell = (label, a, b, unit, better) => `<div><div class="label">${label}</div><div class="vals"><span class="ours">${a}${unit}</span><span class="base">vs ${b}${unit}</span></div><div class="hint" style="margin:2px 0 0">${better}</div></div>`;
     $('pressureCmp').innerHTML =
-      cell('Deadlines at risk', metrics.missed, baseMetrics.missed, '', 'Crunch vs last-minute') +
+      cell('Deadlines at risk', metrics.missed, baseMetrics.missed, '', 'Dueline vs last-minute') +
       cell('Crunch days (≥6h or ≥90% of free time)', metrics.crunchDays, baseMetrics.crunchDays, '', 'fewer means less burnout') +
       cell('Avg. days finished early', metrics.avgBufferDays, baseMetrics.avgBufferDays, '', 'slack for surprises') +
       cell('Order violations', metrics.depViolations, baseMetrics.depViolations, '', 'starting Part 2 before Part 1');
@@ -303,7 +324,7 @@
     const hot = Object.entries(weeks).filter(([, w]) => w.cap && w.load / w.cap >= 0.75);
     $('hotspots').innerHTML = hot.length ? hot.map(([wk, w]) => {
       const dues = live.filter((t) => { const d = C.toDay(t.due); return d >= +wk && d < +wk + 7; });
-      return `<div class="hot">🔥 <b>Pressure point: week of ${C.fmtDay(+wk)}</b>: ${C.round(w.load, 1)}h planned of ${C.round(w.cap, 1)}h free (${Math.round((w.load / w.cap) * 100)}%). Due that week: ${esc(dues.map((t) => t.title).join(', ') || 'none, but earlier work spills in')}.</div>`;
+      return `<div class="hot">${ic('flame')}<div><b>Pressure point: week of ${C.fmtDay(+wk)}</b>: ${C.round(w.load, 1)}h planned of ${C.round(w.cap, 1)}h free (${Math.round((w.load / w.cap) * 100)}%). Due that week: ${esc(dues.map((t) => t.title).join(', ') || 'none, but earlier work spills in')}.</div></div>`;
     }).join('') : '<div class="hint">No week above 75% of your free time. Nice.</div>';
   }
 
@@ -336,7 +357,7 @@
         <div><div class="label hint">Crunch days vs. "grind every free hour"</div><div class="big">${ours.crunchDays} <span style="font-size:16px;color:var(--muted)">vs ${gr.crunchDays}</span></div><div class="hint">${Math.round((1 - ours.crunchDays / gr.crunchDays) * 100)}% fewer, at ${C.round(gr.onTimePct - ours.onTimePct, 1)} pts lower on-time rate</div></div>
       </div>
       ${table}
-      <div class="method"><b>How this was measured.</b> ${esc(E.method)} Every policy replans each day using only what a student would know that day. Overruns only show up once the estimate runs out. Crunch also learns your overrun ratio from finished tasks. Settings were tuned on separate seeds 1-30 (<code>eval/tune.js</code>). The ${E.scenarios} test semesters (seeds ${E.seeds}) were never used for tuning. Reproduce with <code>node eval/run_eval.js</code>.<br><br><b>Honest trade-off:</b> grinding every free hour, earliest deadline first, finishes slightly more tasks on time. Crunch gives up ${C.round(gr.onTimePct - ours.onTimePct, 1)} points of on-time rate for ${Math.round((1 - ours.crunchDays / gr.crunchDays) * 100)}% fewer crunch days and a steadier daily load, and no real student grinds every free hour. Results come from simulated semesters, not real students.</div>`;
+      <div class="method"><b>How this was measured.</b> ${esc(E.method)} Every policy replans each day using only what a student would know that day. Overruns only show up once the estimate runs out. Dueline also learns your overrun ratio from finished tasks. Settings were tuned on separate seeds 1-30 (<code>eval/tune.js</code>). The ${E.scenarios} test semesters (seeds ${E.seeds}) were never used for tuning. Reproduce with <code>node eval/run_eval.js</code>.<br><br><b>Honest trade-off:</b> grinding every free hour, earliest deadline first, finishes slightly more tasks on time. Dueline gives up ${C.round(gr.onTimePct - ours.onTimePct, 1)} points of on-time rate for ${Math.round((1 - ours.crunchDays / gr.crunchDays) * 100)}% fewer crunch days and a steadier daily load, and no real student grinds every free hour. Results come from simulated semesters, not real students.</div>`;
   }
 
   /* ---------- task drawer ---------- */
@@ -349,7 +370,7 @@
     $('drawerBody').innerHTML = `
       <h3>${esc(t.title)}</h3>
       <div class="hint">${esc(t.course)} · ${esc(t.type)} · due ${C.fmtDay(C.toDay(t.due))} · ${t.weight == null ? 'weight unknown' : t.weight + '% of grade'}</div>
-      ${t.completed ? '<p><b style="color:var(--ok)">✓ Completed</b></p>' : `
+      ${t.completed ? '<p><b style="color:var(--ok)">Completed</b></p>' : `
       <p><b>${r ? `Priority #${r.rank} (score ${r.score})` : ''}</b></p>
       <ul>${(r ? r.why : []).map((w) => `<li>${esc(w)}</li>`).join('')}</ul>
       <p><b>Plan:</b> ${C.round(C.remaining({ ...t, scale: t.doneH > 0 ? 1 : current.ratio }), 1)}h left → ${sessions.length ? sessions.join(' · ') : 'not scheduled'}${fin != null ? ` · finishes ${C.fmtDay(fin)} (${early(C.toDay(t.due) - fin)})` : ''}</p>`}
@@ -381,7 +402,7 @@
     state.tasks.filter((t) => !t.completed).forEach((t) => {
       const a = before.finish[t.id], b = after.plan.finish[t.id];
       const due = C.toDay(t.due);
-      if (after.plan.unfinished[t.id] && !before.unfinished[t.id]) items.push(`⚠ "${t.title}" can no longer be finished on time. Add free time, ask for an extension or cut scope.`);
+      if (after.plan.unfinished[t.id] && !before.unfinished[t.id]) items.push(`"${t.title}" can no longer be finished on time. Add free time, ask for an extension or cut scope.`);
       else if (a != null && b != null && a !== b) items.push(`"${t.title}" now finishes ${C.fmtDay(b)} (was ${C.fmtDay(a)}). ${b > due ? 'LATE by ' + (b - due) + ' day(s)' : early(due - b)}`);
       else if (a == null && b != null) items.push(`"${t.title}" scheduled to finish ${C.fmtDay(b)}`);
     });
@@ -425,11 +446,12 @@
       `${tasks.filter((t) => t.confidence === 'high').length} high-confidence, ${tasks.filter((t) => t.confidence !== 'high').length} worth double-checking (Tasks tab)`,
       `${tasks.filter((t) => t.deps.length).length} dependency link(s) detected`,
       `${ignored.length} line(s) skipped: no date, so nothing was guessed`] };
+    $('pasteModal').hidden = true;
     toast(`Found ${tasks.length} tasks`);
     render();
   });
-  $('btnDemo').addEventListener('click', () => { state = demoState(); render(); toast('Demo semester loaded'); });
-  $('btnReset').addEventListener('click', () => { state = { ...demoState(), text: '', tasks: [], ignored: [], log: null }; render(); });
+  $('btnDemo').addEventListener('click', () => { state = demoState(); $('pasteModal').hidden = true; render(); toast('Sample semester loaded'); });
+  $('btnReset').addEventListener('click', () => { state = { ...demoState(), text: '', tasks: [], ignored: [], log: null }; $('pasteModal').hidden = true; render(); });
   $('bufferDays').addEventListener('change', (e) => { state.settings.bufferDays = Math.max(0, +e.target.value || 0); render(); });
   $('prior').addEventListener('change', (e) => { state.settings.prior = Math.min(2, Math.max(1, +e.target.value || 1)); render(); });
   $('commitForm').addEventListener('submit', (e) => {
@@ -450,15 +472,49 @@
     replanLog(before, 'A surprise assignment (5h, due in 4 days) was added');
     render(); toast('Surprise assignment added and plan rebalanced');
   });
-  $('btnAddTask').addEventListener('click', () => {
+  function setMode(mode) {
+    document.querySelectorAll('.seg button').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+    $('oneForm').hidden = mode !== 'one';
+    $('manyPane').hidden = mode !== 'many';
+  }
+  function openNew(mode) {
+    $('fType').innerHTML = C.TYPES.map((t) => `<option value="${t.type}">${t.label}</option>`).join('');
+    $('fType').value = 'assignment';
+    $('courseOptions').innerHTML = [...new Set(state.tasks.map((t) => t.course))].map((c) => `<option value="${esc(c)}">`).join('');
+    $('fDep').innerHTML = '<option value="">Nothing</option>' + state.tasks.filter((t) => !t.completed).map((t) => `<option value="${t.id}">${esc(t.title)}</option>`).join('');
+    $('fDue').min = state.today;
+    if (!$('fDue').value) $('fDue').value = C.fromDay(C.toDay(state.today) + 7);
+    setMode(mode);
+    $('pasteModal').hidden = false;
+    (mode === 'one' ? $('fTitle') : $('inputText')).focus();
+  }
+  document.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+  ['btnOpenPaste', 'btnNewTop', 'btnNewMid', 'btnAddTask'].forEach((id) => $(id).addEventListener('click', () => openNew('one')));
+  $('menuBtn').addEventListener('click', () => openNew('many'));
+  $('pasteClose').addEventListener('click', () => { $('pasteModal').hidden = true; });
+  document.querySelectorAll('.pasteCancel').forEach((b) => b.addEventListener('click', () => { $('pasteModal').hidden = true; }));
+  $('pasteModal').addEventListener('click', (e) => { if (e.target.id === 'pasteModal') $('pasteModal').hidden = true; });
+  $('oneForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const before = snapshot();
+    const type = $('fType').value;
+    const effort = +$('fEffort').value || C.TYPES.find((t) => t.type === type).effort;
     const id = `t${state.nextId++}`;
-    state.tasks.push({ id, title: 'New task', course: 'General', type: 'assignment', due: C.fromDay(C.toDay(state.today) + 7), effortH: 4, origEst: 4,
-      doneH: 0, weight: null, deps: [], confidence: 'high', effortSource: 'entered', notes: [], source: null });
+    const dep = $('fDep').value;
+    const title = $('fTitle').value.trim();
+    state.tasks.push({ id, title, course: $('fCourse').value.trim() || 'General', type, due: $('fDue').value,
+      effortH: effort, origEst: effort, doneH: 0, weight: $('fWeight').value === '' ? null : +$('fWeight').value,
+      deps: dep ? [dep] : [], confidence: 'high', effortSource: $('fEffort').value ? 'entered' : `default for ${type}`,
+      notes: dep ? [`Depends on "${taskById(dep).title}" (set by you)`] : [], source: null });
+    replanLog(before, `Added "${title}" due ${C.fmtDay(C.toDay($('fDue').value))}`);
+    e.target.reset();
+    $('pasteModal').hidden = true;
     render();
+    toast('Deadline added and plan updated');
   });
   $('drawerClose').addEventListener('click', () => { $('drawer').hidden = true; });
   $('drawer').addEventListener('click', (e) => { if (e.target.id === 'drawer') $('drawer').hidden = true; });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('drawer').hidden = true; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('drawer').hidden = true; $('pasteModal').hidden = true; } });
 
   render();
 })();

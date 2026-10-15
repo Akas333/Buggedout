@@ -1,8 +1,8 @@
-# Crunch: Academic Workload & Assignment Planner
+# Dueline: Academic Workload & Assignment Planner
 
 **Bugged Out! 2026, Round 1, PS 04.** Paste your deadlines and get a plan you can actually follow.
 
-Students get deadlines from syllabi, VTOP, classroom announcements and WhatsApp groups. Calendar apps record the dates. They don't account for effort, dependencies, free time, or the fact that things go wrong. Crunch turns a messy text dump into a prioritised, replanning study schedule and explains every decision it makes.
+Students get deadlines from syllabi, VTOP, classroom announcements and WhatsApp groups. Calendar apps record the dates. They don't account for effort, dependencies, free time, or the fact that things go wrong. Dueline turns a messy text dump into a prioritised, replanning study schedule and explains every decision it makes.
 
 ## Run it
 
@@ -14,7 +14,7 @@ open index.html            # or double-click it
 python3 -m http.server 8765   # then visit http://localhost:8765
 ```
 
-Click **Demo semester** to load a sample VIT-style semester. Reproduce the evaluation with Node 18+:
+A sample VIT-style semester loads on first open. Use **New deadline** to add one deadline or paste a whole syllabus. Reproduce the evaluation with Node 18+:
 
 ```bash
 node eval/tune.js       # tunes settings on seeds 1-30 and writes eval/tuned.json
@@ -23,12 +23,12 @@ node eval/run_eval.js   # scores 50 held-out semesters (seeds 1001-1050)
 
 ## What it does (mapped to the brief)
 
-| Requirement | How Crunch does it | Where |
+| Requirement | How Dueline does it | Where |
 |---|---|---|
 | 1. Extract academic tasks | Parses pasted text line by line: dates (`20 Oct`, `Oct 22`, `18/10`, `Friday`, `tomorrow`), task type (DA, CAT, FAT, quiz, lab, project review…), grade weight `(10%)`, stated effort `~6h`, and course headers. **Dependencies** come from sequences (`Review 1 → Review 2`, `DA 1 → DA 2`) and wording (`builds on`, `after`, `requires`). Each task keeps its **source line** and a confidence level. Lines with no date are listed as skipped and never guessed. | `extractTasks` in `js/engine.js` |
 | 2. Prioritise workload | Score out of 100 = urgency (hours needed ÷ free hours before the due date, 40) + grade weight (25) + effort left (15) + how much other work it unblocks (20). Each part is shown with a sentence explaining it. | `prioritize` |
 | 3. Personalised schedule | Free hours per weekday plus busy days. Planner: earliest planning deadline first, finish N days early, prerequisites pulled earlier, ≤2 h sessions, mixes subjects when there's slack, clock-timed agenda. | `planCrunch`, Home tab, Schedule tab |
-| 4. Adapt to changes | "I skipped today", "Finished today's plan", "It's bigger: +2h", surprise assignments, deadline edits and busy days all trigger a replan and a **change log** of what moved and why. A *reality check* multiplier learns how much longer than estimated your tasks really take. | `replanLog`, `learnedRatio` in `js/app.js` |
+| 4. Adapt to changes | "Skip today", "Mark today complete", "It's bigger: +2h", the New deadline pop-up (add one or paste many), surprise tasks, deadline edits and busy days all trigger a replan and a **change log** of what moved and why. A *reality check* multiplier learns how much longer than estimated your tasks really take. | `replanLog`, `learnedRatio` in `js/app.js` |
 | 5. Track progress | Per-course progress bars, a semester health ring, next-deadline countdown, at-risk alerts, and a pressure map of daily load against free time with a warning for every week above 75%. | Home, Pressure map |
 | 6. Explain recommendations | Every task opens to its priority reasons, its planned sessions, the evidence line it came from, and how far before the deadline it finishes. Every replan lists the tasks that moved. | Task drawer, change log |
 
@@ -40,7 +40,7 @@ node eval/run_eval.js   # scores 50 held-out semesters (seeds 1001-1050)
 - **Surprises:** a new assignment announced mid-way, a deadline pulled 3 days earlier, and 2 sick days.
 - Settings were tuned on **seeds 1–30 only** (`eval/tune.js` → `eval/tuned.json`: buffer 2 days, headroom 2). The **50 test seeds 1001–1050 were never used for tuning.** The app ships with the same settings.
 
-| Mean per semester | **Crunch** | Last-minute student | Grind: every free hour, earliest due first |
+| Mean per semester | **Dueline** | Last-minute student | Grind: every free hour, earliest due first |
 |---|---|---|---|
 | Tasks finished on time | **78.0%** | 21.7% | 80.8% |
 | Work left undone at deadlines | **1.2 h** | 36.7 h | 1.2 h |
@@ -53,8 +53,8 @@ node eval/run_eval.js   # scores 50 held-out semesters (seeds 1001-1050)
 \*The last-minute student has few crunch days because the work never gets done (36.7 h left undone).
 
 **Honest reading:**
-- Against how students actually work (last minute), Crunch raises on-time completion from about 22% to 78%.
-- Against a perfect grinder who uses every free hour, Crunch gives up about 3 points of on-time rate. In return it has 28% fewer crunch days and the steadiest daily load. Nobody really grinds every free hour.
+- Against how students actually work (last minute), Dueline raises on-time completion from about 22% to 78%.
+- Against a perfect grinder who uses every free hour, Dueline gives up about 3 points of on-time rate. In return it has 28% fewer crunch days and the steadiest daily load. Nobody really grinds every free hour.
 - All of this comes from simulated semesters with stated assumptions, not real students.
 
 ## Robustness and edge cases handled

@@ -1,11 +1,11 @@
 {
- "generated": "2026-10-15T05:36:54.616Z",
+ "generated": "2026-10-15T05:41:49.977Z",
  "scenarios": 50,
  "seeds": "1001-1050",
  "method": "Daily replanning simulation. True effort = estimate x lognormal overrun (median 1.25x); one surprise task, one deadline pulled 3 days earlier, two sick days per scenario.",
  "summary": {
   "crunch": {
-   "label": "Crunch (ours)",
+   "label": "Dueline (ours)",
    "onTimePct": 78.01,
    "missed": 3.3,
    "unfinishedHours": 1.24,
