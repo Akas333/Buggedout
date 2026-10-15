@@ -1,0 +1,5 @@
+{
+ "headroom": 2,
+ "bufferDays": 2,
+ "prior": 1
+}

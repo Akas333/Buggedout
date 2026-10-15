@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crunch: Semester Planner</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><div class="logo">c</div><span class="brand-name">Crunch</span></div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="home" class="active">Home</button>
+    <button data-tab="plan">Schedule</button>
+    <button data-tab="priorities">Priorities</button>
+    <button data-tab="tasks">Tasks</button>
+    <button data-tab="pressure">Pressure map</button>
+    <button data-tab="proof">Proof</button>
+  </nav>
+  <div class="top-actions">
+    <span class="today" id="todayLabel"></span>
+    <button class="btn ghost small" id="btnDemo">Demo semester</button>
+    <button class="btn ghost small" id="btnReset">Reset</button>
+  </div>
+</header>
+
+<!-- HOME: three columns like a dashboard -->
+<main class="tab active" id="tab-home">
+  <div class="home">
+    <section class="col col-left">
+      <div class="profile">
+        <div class="ring" id="healthRing"></div>
+        <h2>Your semester</h2>
+        <div class="muted small" id="healthLabel"></div>
+        <div class="nudge" id="healthNudge"></div>
+      </div>
+      <div class="stats" id="kpis"></div>
+
+      <div class="cta-card">
+        <div class="cta-emoji">📋</div>
+        <h3>Got new deadlines?</h3>
+        <p>Paste from syllabi, VTOP or WhatsApp. Put course headers on their own line.</p>
+        <textarea id="inputText" spellcheck="false" placeholder="BCSE302L - Database Systems&#10;DA 1 due 20 Oct (10%)&#10;CAT 2 on 3 Nov"></textarea>
+        <button class="btn primary" id="btnExtract">Extract tasks</button>
+        <div id="extractInfo" class="muted small"></div>
+      </div>
+
+      <details class="settings">
+        <summary>Your free time &amp; busy days</summary>
+        <p class="muted small">Hours you can study on each day of the week</p>
+        <div class="avail" id="availGrid"></div>
+        <div class="row"><label>Finish early by <input type="number" id="bufferDays" min="0" max="5" step="1"> day(s)</label></div>
+        <div class="row"><label title="Most students underestimate. Crunch learns your real ratio from logged hours.">Reality check: I take <input type="number" id="prior" min="1" max="2" step="0.05">× my estimates</label></div>
+        <h4>Busy days</h4>
+        <div id="commitList"></div>
+        <form class="commit-add" id="commitForm">
+          <input type="date" id="cDate" required>
+          <input type="number" id="cHours" min="0.5" max="24" step="0.5" placeholder="h" required>
+          <input type="text" id="cLabel" placeholder="Fest, trip…">
+          <button class="btn small">Add</button>
+        </form>
+      </details>
+    </section>
+
+    <section class="col col-mid">
+      <div class="col-head"><h2>Courses</h2><span class="muted small" id="courseMeta"></span></div>
+      <div id="changeLog"></div>
+      <div id="courseList"></div>
+    </section>
+
+    <section class="col col-right">
+      <div class="cal-head">
+        <button class="round" id="weekPrev" aria-label="Previous week">‹</button>
+        <strong id="monthLabel"></strong>
+        <button class="round" id="weekNext" aria-label="Next week">›</button>
+      </div>
+      <div class="strip" id="dayStrip"></div>
+      <div id="agenda"></div>
+      <div class="day-actions">
+        <button class="btn primary" id="btnDayDone">✓ Finished today's plan</button>
+        <button class="btn" id="btnDayMissed">✗ I skipped today</button>
+        <button class="btn ghost" id="btnSurprise">+ Surprise assignment</button>
+      </div>
+    </section>
+  </div>
+</main>
+
+<main class="tab page" id="tab-plan">
+  <div class="plan-bar"><div><h2>Full schedule</h2><span class="muted small" id="planMeta"></span></div></div>
+  <div class="week-grid" id="planGrid"></div>
+</main>
+
+<main class="tab page" id="tab-priorities">
+  <h2>What to work on, and why</h2>
+  <p class="muted small">Score = urgency (40) + grade weight (25) + effort left (15) + unblocks other work (20). Every number has a reason.</p>
+  <div id="prioList"></div>
+</main>
+
+<main class="tab page" id="tab-tasks">
+  <div class="plan-bar"><h2>Tasks</h2><button class="btn small" id="btnAddTask">+ Add task</button></div>
+  <div class="table-wrap"><table class="tasks" id="taskTable"></table></div>
+  <div id="ignoredBox"></div>
+</main>
+
+<main class="tab page" id="tab-pressure">
+  <h2>Pressure map</h2>
+  <p class="muted small">Daily load in your plan compared with a last-minute student given the same tasks and free time.</p>
+  <div class="legend"><span class="sw sw-ours"></span>Crunch plan <span class="sw sw-base"></span>Last-minute <span class="sw sw-cap"></span>Free time <span class="sw sw-due"></span>Deadline</div>
+  <div id="pressureChart" class="chart"></div>
+  <div class="cmp" id="pressureCmp"></div>
+  <div id="hotspots"></div>
+</main>
+
+<main class="tab page" id="tab-proof">
+  <h2>Does it actually work?</h2>
+  <div id="proof"></div>
+</main>
+
+<div class="drawer" id="drawer" hidden>
+  <div class="drawer-card">
+    <button class="close" id="drawerClose" aria-label="Close">×</button>
+    <div id="drawerBody"></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="js/engine.js"></script>
+<script src="js/sample.js"></script>
+<script src="js/eval_results.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
