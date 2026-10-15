@@ -406,6 +406,10 @@
   $('btnExtract').addEventListener('click', () => {
     state.text = $('inputText').value;
     const { tasks, ignored } = C.extractTasks(state.text, state.today);
+    applyExtraction(tasks, ignored, `Extracted ${tasks.length} tasks from your text`);
+  });
+  // Shared by the rule-based extractor and Gemma 4.
+  function applyExtraction(tasks, ignored, title, extra = []) {
     // Re-extracting (e.g. after importing another file) keeps progress on tasks it finds again,
     // and keeps deadlines added by hand.
     const key = (t) => `${t.course}|${t.title}|${t.due}`.toLowerCase();
@@ -424,18 +428,55 @@
     manual.forEach((t) => { t.deps = t.deps.filter((d) => ids.has(d)); });
     state.tasks = tasks.concat(manual); state.ignored = ignored;
     const files = [...new Set(tasks.map((t) => t.source.file).filter(Boolean))];
-    state.log = { title: `Extracted ${tasks.length} tasks from your text`, items: [
+    state.log = { title, items: [
+      ...extra,
       `${tasks.filter((t) => t.confidence === 'high').length} high-confidence, ${tasks.filter((t) => t.confidence !== 'high').length} worth double-checking (Tasks tab)`,
       ...(files.length ? [`${tasks.filter((t) => t.source.file).length} from imported files: ${files.join(', ')}`] : []),
       ...(kept ? [`Progress kept on ${kept} task(s) you already had`] : []),
       ...(manual.length ? [`${manual.length} deadline(s) you added by hand kept`] : []),
       `${tasks.filter((t) => t.deps.length).length} dependency link(s) detected`,
       `${ignored.length} line(s) skipped: no date, so nothing was guessed`] };
-    importList.length = 0; renderImports();
+    importList.length = 0; renderImports(); gemmaImages.length = 0;
     $('pasteModal').hidden = true;
     toast(`Found ${tasks.length} tasks`);
     render();
+  }
+
+  /* ---------- Gemma 4: messy text and screenshots → deadlines ---------- */
+  const gemmaImages = []; // screenshots added in this import, sent to Gemma as images
+  $('btnGemma').addEventListener('click', async () => {
+    if (!window.DuelineGemma) { toast('Gemma 4 module failed to load'); return; }
+    const text = $('inputText').value;
+    if (!text.trim() && !gemmaImages.length) { toast('Paste text or add a screenshot first'); return; }
+    const btn = $('btnGemma'), label = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = `${ic('clock')}Gemma 4 is reading…`;
+    try {
+      const r = await window.DuelineGemma.extract({ text, images: gemmaImages, today: state.today, C });
+      if (!r.tasks.length) { toast('Gemma 4 found no dated deadlines'); return; }
+      state.text = text;
+      applyExtraction(r.tasks, r.ignored, `Gemma 4 found ${r.tasks.length} deadlines`, [
+        `${r.meta.verified} matched word-for-word in your text${r.tasks.length - r.meta.verified ? `, ${r.tasks.length - r.meta.verified} marked "check this" (Tasks tab)` : ''}`,
+        ...(r.meta.images ? [`Read ${r.meta.images} screenshot(s) directly`] : []),
+        `Model: ${r.meta.via}`]);
+    } catch (e) {
+      if (e.code === 'NO_KEY') $('gemmaKey').focus();
+      toast(e.message || 'Gemma 4 failed. The regular extractor still works');
+    } finally { btn.disabled = false; btn.innerHTML = label; }
   });
+  function renderGemmaKey() {
+    if (!window.DuelineGemma) return;
+    const has = !!window.DuelineGemma.getKey();
+    $('gemmaKey').placeholder = has ? 'Key saved in this browser ✓' : 'Paste your free Gemini API key';
+    $('gemmaKeySave').textContent = $('gemmaKey').value.trim() ? 'Save' : has ? 'Remove' : 'Save';
+  }
+  $('gemmaKey').addEventListener('input', renderGemmaKey);
+  $('gemmaKeySave').addEventListener('click', () => {
+    const v = $('gemmaKey').value.trim();
+    if (v) { window.DuelineGemma.setKey(v); $('gemmaKey').value = ''; toast('Gemma 4 key saved in this browser'); }
+    else if (window.DuelineGemma.getKey()) { window.DuelineGemma.setKey(''); toast('Key removed'); }
+    renderGemmaKey();
+  });
+  renderGemmaKey();
 
   /* ---------- import: files, screenshots and links become text in the box above ---------- */
   const importList = []; // { name, status: 'busy' | 'done' | 'error', msg, pct }
@@ -470,6 +511,7 @@
   function importFiles(files) {
     if (!window.DuelineImport) { toast('Importer failed to load. You can still paste text'); return; }
     if ($('pasteModal').hidden || $('manyPane').hidden) openNew('many');
+    gemmaImages.push(...[...files].filter((f) => /^image\//.test(f.type)));
     [...files].forEach((f) => runImport(f.name || 'Pasted screenshot', (p) => window.DuelineImport.fileToText(f, p)));
   }
   $('fileInput').addEventListener('change', (e) => { importFiles(e.target.files); e.target.value = ''; });

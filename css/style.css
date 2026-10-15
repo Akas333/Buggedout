@@ -946,3 +946,22 @@ table.tasks td:nth-child(1) input { font-weight: 600; }
 .dr-src code { display: block; margin: 8px 0 6px; padding: 8px 10px; background: var(--panel); border-radius: 8px; font: 12px var(--mono); color: var(--text); white-space: pre-wrap; }
 .dr-actions { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; margin-top: 18px; }
 @media (max-width: 480px) { .dr-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dr-actions { grid-template-columns: 1fr 1fr; } .dr-actions .btn.primary { grid-column: 1 / -1; } }
+
+/* Gemma 4 key + button */
+.gemma-key { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.gk-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--accent-text); white-space: nowrap; }
+.gk-badge .i { width: 15px; height: 15px; }
+.gemma-key input { flex: 1 1 200px; min-width: 0; padding: 8px 10px; font-size: 13px; }
+.gk-link { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.gk-link:hover { color: var(--text); }
+.gk-note { margin: 6px 0 0; }
+.btn.gemma { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
+.btn.gemma:hover { filter: brightness(1.08); }
+.btn.gemma[disabled] { opacity: .7; cursor: progress; }
+#manyPane .actions .btn { white-space: nowrap; }
+@media (max-width: 760px) {
+  #manyPane .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  #manyPane .actions .spacer { display: none; }
+  #btnExtract, #btnGemma { flex: 1 1 calc(50% - 4px) !important; }
+  #manyPane .actions .pasteCancel, #btnDemo, #btnReset { flex: 1 1 calc(33% - 6px) !important; font-size: 12.5px; padding: 8px 6px; }
+}

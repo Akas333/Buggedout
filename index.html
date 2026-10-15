@@ -275,7 +275,14 @@
         <p class="muted small import-note">Imported text is added below so you can check it before extracting. Screenshots are read in your browser; if that fails they go to the free OCR.space API. Links that block direct access go through allorigins.win or r.jina.ai.</p>
       </div>
       <textarea id="inputText" spellcheck="false" placeholder="BCSE302L - Database Systems&#10;DA 1 due 20 Oct (10%)&#10;CAT 2 on 3 Nov"></textarea>
-      <div class="actions"><button class="btn primary" id="btnExtract" type="button">Extract deadlines</button><button class="btn ghost pasteCancel" type="button">Cancel</button>
+      <div class="gemma-key">
+        <span class="gk-badge"><svg class="i"><use href="#i-zap"/></svg>Gemma 4</span>
+        <input type="password" id="gemmaKey" placeholder="Paste your free Gemini API key" autocomplete="off" spellcheck="false" aria-label="Gemini API key">
+        <button class="btn small" type="button" id="gemmaKeySave">Save</button>
+        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="gk-link">Get a free key ↗</a>
+      </div>
+      <p class="muted small gk-note">Gemma 4 reads messy text and screenshots directly. Your key stays in this browser. On Google's free tier, inputs may be used to improve Google's products.</p>
+      <div class="actions"><button class="btn primary" id="btnExtract" type="button">Extract deadlines</button><button class="btn gemma" id="btnGemma" type="button"><svg class="i"><use href="#i-zap"/></svg>Extract with Gemma 4</button><button class="btn ghost pasteCancel" type="button">Cancel</button>
         <span class="spacer"></span><button class="btn ghost small" id="btnDemo" type="button">Load sample semester</button><button class="btn ghost small" id="btnReset" type="button">Clear all</button></div>
     </div>
   </div>
@@ -286,6 +293,7 @@
 <script src="js/sample.js"></script>
 <script src="js/eval_results.js"></script>
 <script src="js/importer.js"></script>
+<script src="js/gemma.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
