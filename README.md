@@ -29,7 +29,7 @@ node eval/run_eval.js   # scores 50 held-out semesters (seeds 1001-1050)
 | 2. Prioritise workload | Score out of 100 = urgency (hours needed ÷ free hours before the due date, 40) + grade weight (25) + effort left (15) + how much other work it unblocks (20). Each part is shown with a sentence explaining it. | `prioritize` |
 | 3. Personalised schedule | Free hours per weekday plus busy days. Planner: earliest planning deadline first, finish N days early, prerequisites pulled earlier, ≤2 h sessions, mixes subjects when there's slack, clock-timed agenda. | `planCrunch`, Home tab, Schedule tab (month, week and day calendar with search and course filters) |
 | 4. Adapt to changes | "Skip today", "Mark today complete", "It's bigger: +2h", the New deadline pop-up (add one or paste many), surprise tasks, deadline edits and busy days all trigger a replan and a **change log** of what moved and why. A *reality check* multiplier learns how much longer than estimated your tasks really take. | `replanLog`, `learnedRatio` in `js/app.js` |
-| 5. Track progress | Per-course progress bars, a semester health ring, next-deadline countdown, at-risk alerts, and a pressure map of daily load against free time with a warning for every week above 75%. | Home, Pressure map |
+| 5. Track progress | Per-course progress bars, a semester health ring, next-deadline countdown, at-risk alerts, and a task board (To do / In progress / At risk / Done) with drag-and-drop. The planner fills *At risk* automatically. | Home, Tasks board |
 | 6. Explain recommendations | Every task opens to its priority reasons, its planned sessions, the evidence line it came from, and how far before the deadline it finishes. Every replan lists the tasks that moved. | Task drawer, change log |
 
 ## Evaluation: 50 unseen semesters
@@ -57,6 +57,8 @@ node eval/run_eval.js   # scores 50 held-out semesters (seeds 1001-1050)
 - Against a perfect grinder who uses every free hour, Dueline gives up about 3 points of on-time rate. In return it has 28% fewer crunch days and the steadiest daily load. Nobody really grinds every free hour.
 - All of this comes from simulated semesters with stated assumptions, not real students.
 
+Light and dark themes are both supported: the app follows your system setting, and the sun/moon button switches manually.
+
 ## Robustness and edge cases handled
 
 - Lines with no date are skipped and shown to the user, never guessed. Weekday-only dates are marked medium confidence.
@@ -68,7 +70,7 @@ node eval/run_eval.js   # scores 50 held-out semesters (seeds 1001-1050)
 ## Project structure
 
 ```
-index.html          UI shell (Home, Schedule, Priorities, Tasks, Pressure map, Proof)
+index.html          UI shell (Home, Schedule, Priorities, Tasks board/table, Results). Light and dark themes.
 css/style.css       styles
 js/engine.js        extraction, priority, planners, baselines, metrics, simulator (browser + Node)
 js/app.js           UI, replanning, change log, learning

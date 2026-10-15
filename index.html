@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Dueline: Semester Planner</title>
 <link rel="stylesheet" href="css/style.css">
+<script>try { var t = localStorage.getItem("dueline-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 </head>
 <body>
 <!-- Icon sprite (Lucide-style line icons, inlined so the app works offline) -->
@@ -31,6 +32,11 @@
     <symbol id="i-trend" viewBox="0 0 24 24"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></symbol>
     <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+    <symbol id="i-board" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="i-hours" viewBox="0 0 24 24"><path d="M5 22h14M5 2h14M17 22v-4.17a2 2 0 0 0-.59-1.42L12 12l-4.41 4.41A2 2 0 0 0 7 17.83V22M7 2v4.17a2 2 0 0 0 .59 1.42L12 12l4.41-4.41A2 2 0 0 0 17 6.17V2"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
     <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4M10 9H8M16 13H8M16 17H8"/></symbol>
   </defs>
@@ -46,12 +52,12 @@
     <button data-tab="plan">Schedule</button>
     <button data-tab="priorities">Priorities</button>
     <button data-tab="tasks">Tasks</button>
-    <button data-tab="pressure">Workload</button>
     <button data-tab="proof">Results</button>
   </nav>
   <div class="top-actions">
     <span class="today" id="todayLabel"></span>
     <button class="btn primary small" id="btnNewTop"><svg class="i"><use href="#i-plus"/></svg>New deadline</button>
+    <button class="icon-btn" id="themeBtn" aria-label="Toggle dark mode" title="Toggle dark mode"><svg class="i"><use href="#i-moon"/></svg></button>
     <button class="icon-btn" id="bellBtn" aria-label="At-risk alerts"><svg class="i"><use href="#i-bell"/></svg><i class="bell-dot" id="bellDot" hidden></i></button>
     <button class="icon-btn" id="menuBtn" aria-label="Sample data and reset" title="Sample data"><svg class="i"><use href="#i-user"/></svg></button>
   </div>
@@ -160,19 +166,24 @@
   <div id="prioList"></div>
 </main>
 
-<main class="tab page" id="tab-tasks">
-  <div class="page-head row-between"><h2>Tasks</h2><button class="btn primary small" id="btnAddTask"><svg class="i"><use href="#i-plus"/></svg>New deadline</button></div>
-  <div class="table-wrap"><table class="tasks" id="taskTable"></table></div>
+<main class="tab page wide" id="tab-tasks">
+  <div class="page-head row-between">
+    <div class="ph-left"><h2>Tasks</h2><span class="muted small" id="taskCount"></span></div>
+    <div class="ph-right">
+      <div class="seg" id="taskView">
+        <button data-v="board" class="active" type="button"><svg class="i"><use href="#i-board"/></svg>Board</button>
+        <button data-v="table" type="button"><svg class="i"><use href="#i-list"/></svg>Table</button>
+      </div>
+      <button class="btn primary small" id="btnAddTask"><svg class="i"><use href="#i-plus"/></svg>New deadline</button>
+    </div>
+  </div>
+  <div id="board" class="board"></div>
+  <div id="tableView" hidden>
+    <div class="table-wrap"><table class="tasks" id="taskTable"></table></div>
+  </div>
   <div id="ignoredBox"></div>
 </main>
 
-<main class="tab page" id="tab-pressure">
-  <div class="page-head"><h2>Workload</h2><span class="muted small">Daily hours in your plan compared with a last-minute approach on the same tasks and free time</span></div>
-  <div class="legend"><span><i class="sw sw-ours"></i>Dueline plan</span><span><i class="sw sw-base"></i>Last-minute</span><span><i class="sw sw-cap"></i>Free time</span><span><i class="sw sw-due"></i>Deadline</span></div>
-  <div id="pressureChart" class="chart"></div>
-  <div class="cmp" id="pressureCmp"></div>
-  <div id="hotspots"></div>
-</main>
 
 <main class="tab page" id="tab-proof">
   <div class="page-head"><h2>Results</h2><span class="muted small">Measured on 50 simulated semesters the planner was never tuned on</span></div>

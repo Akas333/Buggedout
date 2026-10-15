@@ -15,6 +15,11 @@
   function demoState() {
     const { tasks, ignored } = C.extractTasks(S.text, S.today);
     tasks.forEach((t) => { t.origEst = t.effortH; });
+    // A semester already under way: one task started, one lab already submitted.
+    const started = tasks.find((t) => /^DA 1/.test(t.title));
+    if (started) { started.doneH = 2; started.started = true; }
+    const finished = tasks.find((t) => /Lab experiment 5/.test(t.title));
+    if (finished) { finished.completed = true; finished.doneH = finished.effortH; }
     return { today: S.today, text: S.text, tasks, ignored, settings: JSON.parse(JSON.stringify({ ...S.settings, prior: 1 })), log: null, nextId: tasks.length + 1 };
   }
   function loadState() { try { const s = JSON.parse(localStorage.getItem(KEY)); return s && s.tasks ? s : null; } catch (e) { return null; } }
@@ -56,7 +61,6 @@
     renderPlan();
     renderPrio();
     renderTasks();
-    renderPressure();
     renderProof();
     save();
   }
@@ -87,8 +91,8 @@
     const days = next ? C.toDay(next.due) - today : null;
     const onTrack = live.length ? (live.length - atRisk.length) / live.length : 1;
     const R = 42, L = 2 * Math.PI * R;
-    $('healthRing').innerHTML = `<svg width="96" height="96" viewBox="0 0 96 96"><circle cx="48" cy="48" r="${R}" fill="none" stroke="#fdecea" stroke-width="7"/>
-      <circle cx="48" cy="48" r="${R}" fill="none" stroke="#ee6352" stroke-width="7" stroke-linecap="round" stroke-dasharray="${L * onTrack} ${L}" transform="rotate(-90 48 48)"/></svg>
+    $('healthRing').innerHTML = `<svg width="96" height="96" viewBox="0 0 96 96"><circle cx="48" cy="48" r="${R}" fill="none" style="stroke:var(--accent-soft)" stroke-width="7"/>
+      <circle cx="48" cy="48" r="${R}" fill="none" style="stroke:var(--accent)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${L * onTrack} ${L}" transform="rotate(-90 48 48)"/></svg>
       <div class="face">${ic('cap')}</div>`;
     $('healthLabel').innerHTML = `<div class="level">${Math.round(onTrack * 100)}% on track · ${atRisk.length ? `${atRisk.length} deadline(s) at risk` : 'every deadline fits'}</div>`;
     $('bellDot').hidden = !atRisk.length;
@@ -219,6 +223,7 @@
   }
 
   function renderTasks() {
+    renderBoard();
     const types = C.TYPES.map((t) => t.type);
     const rows = state.tasks.map((t) => `<tr data-id="${t.id}">
       <td><input data-f="title" value="${esc(t.title)}"></td>
@@ -253,45 +258,6 @@
     });
     $('ignoredBox').innerHTML = state.ignored.length
       ? `<b>Skipped lines</b> (no deadline found, so nothing was guessed):<br>${state.ignored.map((i) => `L${i.line}: <code>${esc(i.text)}</code> (${esc(i.why)})`).join('<br>')}` : '';
-  }
-
-  function renderPressure() {
-    const { plan, base, metrics, baseMetrics, settings, live } = current;
-    const today = C.toDay(state.today);
-    const last = Math.max(today + 6, ...plan.days.map((d) => d.day), ...base.days.map((d) => d.day));
-    const n = last - today + 1;
-    const W = Math.max(700, n * 30), H = 230, pad = 28;
-    const maxY = Math.max(4, ...plan.days.map((d) => d.cap), ...base.days.map((d) => d.load));
-    const bw = (W - pad * 2) / n;
-    const y = (v) => H - pad - (v / maxY) * (H - pad * 2);
-    const get = (p, d) => (p.days.find((x) => x.day === d) || { load: 0 }).load;
-    let svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily load chart">`;
-    for (let g = 0; g <= maxY; g += 2) svg += `<line x1="${pad}" x2="${W - pad}" y1="${y(g)}" y2="${y(g)}" stroke="#e4e4e7" stroke-width="1"/><text x="4" y="${y(g) + 4}" fill="#74747a" font-size="10">${g}h</text>`;
-    for (let i = 0; i < n; i++) {
-      const d = today + i, x = pad + i * bw;
-      const cap = C.capacityOn(d, settings);
-      svg += `<rect x="${x + 1}" y="${y(cap)}" width="${bw - 2}" height="${H - pad - y(cap)}" fill="#f4f4f5" rx="3"/>`;
-      const a = get(plan, d), b = get(base, d);
-      svg += `<rect x="${x + 3}" y="${y(a)}" width="${(bw - 6) / 2}" height="${H - pad - y(a)}" fill="#ee6352" rx="2"><title>${C.fmtDay(d)}: Dueline ${a}h</title></rect>`;
-      svg += `<rect x="${x + 3 + (bw - 6) / 2}" y="${y(b)}" width="${(bw - 6) / 2}" height="${H - pad - y(b)}" fill="#3a3a40" rx="2"><title>${C.fmtDay(d)}: last-minute ${b}h</title></rect>`;
-      if (live.some((t) => C.toDay(t.due) === d)) svg += `<circle cx="${x + bw / 2}" cy="${pad - 10}" r="4" fill="#f5a524"><title>${esc(live.filter((t) => C.toDay(t.due) === d).map((t) => t.title).join(', '))}</title></circle>`;
-      if (i % Math.ceil(n / 20) === 0) svg += `<text x="${x + bw / 2}" y="${H - 8}" fill="#74747a" font-size="10" text-anchor="middle">${C.fmtDay(d).slice(4)}</text>`;
-    }
-    $('pressureChart').innerHTML = svg + '</svg>';
-    const cell = (label, a, b, unit, better) => `<div><div class="label">${label}</div><div class="vals"><span class="ours">${a}${unit}</span><span class="base">vs ${b}${unit}</span></div><div class="hint" style="margin:2px 0 0">${better}</div></div>`;
-    $('pressureCmp').innerHTML =
-      cell('Deadlines at risk', metrics.missed, baseMetrics.missed, '', 'Dueline vs last-minute') +
-      cell('Crunch days (≥6h or ≥90% of free time)', metrics.crunchDays, baseMetrics.crunchDays, '', 'fewer means less burnout') +
-      cell('Avg. days finished early', metrics.avgBufferDays, baseMetrics.avgBufferDays, '', 'slack for surprises') +
-      cell('Order violations', metrics.depViolations, baseMetrics.depViolations, '', 'starting Part 2 before Part 1');
-    // Weeks where planned load is high relative to free time
-    const weeks = {};
-    plan.days.forEach((d) => { const wk = d.day - ((C.weekday(d.day) + 6) % 7); weeks[wk] = weeks[wk] || { load: 0, cap: 0 }; weeks[wk].load += d.load; weeks[wk].cap += d.cap; });
-    const hot = Object.entries(weeks).filter(([, w]) => w.cap && w.load / w.cap >= 0.75);
-    $('hotspots').innerHTML = hot.length ? hot.map(([wk, w]) => {
-      const dues = live.filter((t) => { const d = C.toDay(t.due); return d >= +wk && d < +wk + 7; });
-      return `<div class="hot">${ic('flame')}<div><b>Pressure point: week of ${C.fmtDay(+wk)}</b>: ${C.round(w.load, 1)}h planned of ${C.round(w.cap, 1)}h free (${Math.round((w.load / w.cap) * 100)}%). Due that week: ${esc(dues.map((t) => t.title).join(', ') || 'none, but earlier work spills in')}.</div></div>`;
-    }).join('') : '<div class="hint">No week above 75% of your free time. Nice.</div>';
   }
 
   function renderProof() {
@@ -593,6 +559,106 @@
   $('miniNext').addEventListener('click', () => { cal.cursor = addMonths(cal.cursor, 1); renderPlan(); });
   $('calSearch').addEventListener('input', (e) => { cal.q = e.target.value.trim().toLowerCase(); renderPlan(); });
   $('btnNewCal').addEventListener('click', () => openNew('one'));
+
+  /* ---------- Tasks: board ---------- */
+  const TYPE_TAG = { exam: ['#fde2e4', '#9f1239'], midterm: ['#fde2e4', '#9f1239'], quiz: ['#dbeafe', '#1e40af'], project: ['#ede9fe', '#5b21b6'],
+    presentation: ['#fce7f3', '#9d174d'], report: ['#ecfccb', '#3f6212'], lab: ['#ccfbf1', '#115e59'], assignment: ['#fef3c7', '#854d0e'] };
+  const PRIO_TAG = { High: ['#fbd5d1', '#b42318'], Medium: ['#fde7c3', '#9a4b00'], Low: ['#d3f0ec', '#0f766e'] };
+  let taskView = 'board';
+  const COLS = [
+    { key: 'todo', title: 'To do', dot: 'var(--muted)' },
+    { key: 'doing', title: 'In progress', dot: 'var(--info)' },
+    { key: 'risk', title: 'At risk', dot: 'var(--danger)' },
+    { key: 'done', title: 'Done', dot: 'var(--ok)' },
+  ];
+  function columnOf(t) {
+    const { plan } = current;
+    if (t.completed) return 'done';
+    if (plan.unfinished[t.id] || plan.finish[t.id] == null || plan.finish[t.id] > C.toDay(t.due)) return 'risk';
+    if (t.started || t.doneH > 0) return 'doing';
+    return 'todo';
+  }
+  function renderBoard() {
+    const scores = Object.fromEntries(current.prio.map((r) => [r.id, r.score]));
+    const courses = [...new Set(state.tasks.map((t) => t.course))];
+    const today = C.toDay(state.today);
+    const tag = (label, [b, f]) => `<span class="tag" style="--tb:${b};--tf:${f}">${esc(label)}</span>`;
+    $('board').innerHTML = COLS.map((col) => {
+      const items = state.tasks.filter((t) => columnOf(t) === col.key).sort((a, b) => a.due.localeCompare(b.due));
+      const cards = items.map((t) => {
+        const sc = scores[t.id];
+        const prio = t.completed ? null : sc >= 38 ? 'High' : sc >= 28 ? 'Medium' : 'Low';
+        const info = C.TYPES.find((x) => x.type === t.type) || C.TYPES[C.TYPES.length - 1];
+        const due = C.toDay(t.due);
+        const left = C.round(C.remaining({ ...t, scale: t.doneH > 0 ? 1 : current.ratio }), 1);
+        const pct = t.effortH ? Math.min(100, Math.round((t.doneH / t.effortH) * 100)) : 0;
+        const ci = Math.max(0, courses.indexOf(t.course));
+        const dueTxt = due === today ? 'Today' : due === today + 1 ? 'Tomorrow' : C.fmtDay(due).slice(4);
+        return `<div class="card ${t.completed ? 'done' : ''}" draggable="true" data-id="${t.id}">
+          <h4>${esc(t.title)}</h4>
+          ${col.key === 'doing' ? `<div class="progress-mini"><i style="width:${pct}%"></i></div>` : ''}
+          <div class="tags">${prio ? tag(prio, PRIO_TAG[prio]) : tag('Completed', ['#d3f0ec', '#0f766e'])}${tag(info.label, TYPE_TAG[t.type] || TYPE_TAG.assignment)}${t.weight != null ? tag(`${t.weight}%`, ['#e5e7eb', '#374151']) : ''}</div>
+          <div class="card-foot">
+            <span class="f ${col.key === 'risk' ? 'late' : ''}">${ic('calendar')}${dueTxt}</span>
+            ${t.completed ? '' : `<span class="f">${ic('hours')}${left}h left</span>`}
+            <span class="spacer"></span>
+            <span class="cavatar" style="background:${TILE_BG[ci % TILE_BG.length]}" title="${esc(t.course)}">${esc(initials(t.course))}</span>
+          </div></div>`;
+      }).join('');
+      return `<section class="bcol" data-col="${col.key}">
+        <div class="bcol-head"><i class="dot" style="background:${col.dot}"></i><h3>${col.title}</h3><span class="count">${items.length}</span><span class="spacer"></span>
+          ${col.key === 'todo' ? `<button class="icon-btn add-col" aria-label="New deadline">${ic('plus')}</button>` : ''}</div>
+        ${cards || `<div class="empty-col">${col.key === 'risk' ? 'Nothing at risk' : col.key === 'done' ? 'Drag finished work here' : 'No tasks'}</div>`}
+        ${col.key === 'todo' ? `<button class="add-new">${ic('plus')}Add new</button>` : ''}
+      </section>`;
+    }).join('');
+    $('taskCount').textContent = `${state.tasks.length} tasks · ${state.tasks.filter((t) => t.completed).length} done`;
+    $('board').querySelectorAll('.add-new, .add-col').forEach((b) => b.addEventListener('click', () => openNew('one')));
+    $('board').querySelectorAll('.card').forEach((card) => {
+      card.addEventListener('click', () => openTask(card.dataset.id));
+      card.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', card.dataset.id); card.classList.add('dragging'); });
+      card.addEventListener('dragend', () => card.classList.remove('dragging'));
+    });
+    $('board').querySelectorAll('.bcol').forEach((col) => {
+      col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('drop'); });
+      col.addEventListener('dragleave', () => col.classList.remove('drop'));
+      col.addEventListener('drop', (e) => { e.preventDefault(); col.classList.remove('drop'); moveTask(e.dataTransfer.getData('text/plain'), col.dataset.col); });
+    });
+  }
+  function moveTask(id, to) {
+    const t = taskById(id);
+    if (!t || columnOf(t) === to) return;
+    if (to === 'risk') { toast('"At risk" is set by the planner from your free time'); return; }
+    const before = snapshot();
+    if (to === 'done') { t.completed = true; t.effortH = Math.max(t.doneH, t.effortH); t.doneH = t.effortH; }
+    if (to === 'doing') { t.completed = false; t.started = true; }
+    if (to === 'todo') { t.completed = false; t.started = false; t.doneH = 0; }
+    replanLog(before, `"${t.title}" moved to ${COLS.find((c) => c.key === to).title}`);
+    render();
+    toast(`Moved to ${COLS.find((c) => c.key === to).title}`);
+  }
+  $('taskView').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    taskView = b.dataset.v;
+    document.querySelectorAll('#taskView button').forEach((x) => x.classList.toggle('active', x === b));
+    $('board').hidden = taskView !== 'board';
+    $('tableView').hidden = taskView !== 'table';
+  });
+
+  /* ---------- theme ---------- */
+  function applyThemeIcon() {
+    const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    $('themeBtn').innerHTML = ic(dark ? 'sun' : 'moon');
+    $('themeBtn').title = dark ? 'Switch to light mode' : 'Switch to dark mode';
+    return dark;
+  }
+  $('themeBtn').addEventListener('click', () => {
+    const next = applyThemeIcon() ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('dueline-theme', next); } catch (e) { /* storage blocked */ }
+    applyThemeIcon();
+  });
+  applyThemeIcon();
 
   render();
 })();
