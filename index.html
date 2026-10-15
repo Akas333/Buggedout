@@ -52,6 +52,7 @@
     <button data-tab="plan">Schedule</button>
     <button data-tab="priorities">Priorities</button>
     <button data-tab="tasks">Tasks</button>
+    <button data-tab="workload">Workload</button>
     <button data-tab="proof">Results</button>
   </nav>
   <div class="top-actions">
@@ -185,10 +186,33 @@
 </main>
 
 
-<main class="tab page" id="tab-proof">
-  <div class="page-head"><h2>Results</h2><span class="muted small">Measured on 50 simulated semesters the planner was never tuned on</span></div>
+<main class="tab page wide" id="tab-workload">
+  <div class="page-head"><h2>Workload</h2><span class="muted small" id="wlRange"></span></div>
+  <div class="kpi-row" id="wlKpis"></div>
+  <div class="viz-card">
+    <div class="viz-title"><h3>Daily study hours</h3><span class="sub">planned vs free time</span><span class="spacer"></span>
+      <div class="legend2"><span><i style="background:var(--viz-accent)"></i>Planned</span><span><i style="background:var(--panel);border:1px solid var(--line)"></i>Free time</span><span><i class="tri"></i>Deadline</span></div></div>
+    <div id="wlDaily"></div>
+    <details class="tview"><summary>View as table</summary><div id="wlDailyTable"></div></details>
+  </div>
+  <div class="wl-grid">
+    <div class="viz-card">
+      <div class="viz-title"><h3>Week by week</h3><span class="sub">share of free time used</span></div>
+      <div id="wlHeat"></div>
+      <div class="ramp"><span>0%</span><span class="bar"></span><span>100%</span><span style="margin-left:10px;display:inline-flex;align-items:center;gap:6px"><i style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:7px solid var(--text)"></i>deadline</span></div>
+    </div>
+    <div class="viz-card">
+      <div class="viz-title"><h3>Hours left by course</h3><span class="sub" id="wlCourseSub"></span></div>
+      <div id="wlCourses" class="hbars"></div>
+    </div>
+  </div>
+</main>
+
+<main class="tab page wide" id="tab-proof">
+  <div class="page-head"><h2>Results</h2><span class="muted small">50 simulated semesters, never used for tuning</span></div>
   <div id="proof"></div>
 </main>
+<div class="tip" id="tip" hidden></div>
 
 <!-- Task details -->
 <div class="drawer" id="drawer" hidden>

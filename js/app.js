@@ -62,6 +62,7 @@
     renderPrio();
     renderTasks();
     renderProof();
+    renderWorkload();
     save();
   }
 
@@ -258,38 +259,6 @@
     });
     $('ignoredBox').innerHTML = state.ignored.length
       ? `<b>Skipped lines</b> (no deadline found, so nothing was guessed):<br>${state.ignored.map((i) => `L${i.line}: <code>${esc(i.text)}</code> (${esc(i.why)})`).join('<br>')}` : '';
-  }
-
-  function renderProof() {
-    const E = window.CRUNCH_EVAL;
-    if (!E) { $('proof').innerHTML = '<div class="empty">Run <code>node eval/run_eval.js</code> to generate results.</div>'; return; }
-    const s = E.summary;
-    const rows = [
-      ['On-time tasks', 'onTimePct', '%', 'max'],
-      ['Deadlines missed / semester', 'missed', '', 'min'],
-      ['Work left undone at deadline (h)', 'unfinishedHours', '', 'min'],
-      ['Crunch days (≥7h)', 'crunchDays', '', 'min'],
-      ['Peak day (h)', 'peakDay', '', 'min'],
-      ['Daily load std. dev. (h)', 'loadSd', '', 'min'],
-      ['Avg. days finished early', 'avgBufferDays', '', 'max'],
-      ['Started Part 2 before Part 1', 'depViolations', '', 'min'],
-    ];
-    const keys = ['crunch', 'lastminute', 'duedate'];
-    const table = `<table class="proof-table"><thead><tr><th>Metric (mean of ${E.scenarios} unseen semesters)</th>${keys.map((k) => `<th>${esc(s[k].label)}</th>`).join('')}</tr></thead><tbody>${
-      rows.map(([label, k, unit, dir]) => {
-        const vals = keys.map((p) => s[p][k]);
-        const best = dir === 'max' ? Math.max(...vals) : Math.min(...vals);
-        return `<tr><td>${label}</td>${vals.map((v) => `<td class="${v === best ? 'best' : ''}">${v}${unit}</td>`).join('')}</tr>`;
-      }).join('')}</tbody></table>`;
-    const ours = s.crunch, lm = s.lastminute, gr = s.duedate;
-    $('proof').innerHTML = `
-      <div class="proof-hero">
-        <div><div class="label hint">On-time vs. last-minute student</div><div class="big">${ours.onTimePct}% <span style="font-size:16px;color:var(--muted)">vs ${lm.onTimePct}%</span></div><div class="hint">same tasks, same free time, same surprises</div></div>
-        <div><div class="label hint">Work left undone at deadlines</div><div class="big">${ours.unfinishedHours}h <span style="font-size:16px;color:var(--muted)">vs ${lm.unfinishedHours}h</span></div><div class="hint">per semester, vs last-minute</div></div>
-        <div><div class="label hint">Crunch days vs. "grind every free hour"</div><div class="big">${ours.crunchDays} <span style="font-size:16px;color:var(--muted)">vs ${gr.crunchDays}</span></div><div class="hint">${Math.round((1 - ours.crunchDays / gr.crunchDays) * 100)}% fewer, at ${C.round(gr.onTimePct - ours.onTimePct, 1)} pts lower on-time rate</div></div>
-      </div>
-      ${table}
-      <div class="method"><b>How this was measured.</b> ${esc(E.method)} Every policy replans each day using only what a student would know that day. Overruns only show up once the estimate runs out. Dueline also learns your overrun ratio from finished tasks. Settings were tuned on separate seeds 1-30 (<code>eval/tune.js</code>). The ${E.scenarios} test semesters (seeds ${E.seeds}) were never used for tuning. Reproduce with <code>node eval/run_eval.js</code>.<br><br><b>Honest trade-off:</b> grinding every free hour, earliest deadline first, finishes slightly more tasks on time. Dueline gives up ${C.round(gr.onTimePct - ours.onTimePct, 1)} points of on-time rate for ${Math.round((1 - ours.crunchDays / gr.crunchDays) * 100)}% fewer crunch days and a steadier daily load, and no real student grinds every free hour. Results come from simulated semesters, not real students.</div>`;
   }
 
   /* ---------- task drawer ---------- */
@@ -659,6 +628,220 @@
     applyThemeIcon();
   });
   applyThemeIcon();
+
+  /* ---------- shared chart helpers ---------- */
+  const f1 = (x) => String(Math.round(x * 10) / 10);
+  const NS = 'http://www.w3.org/2000/svg';
+  // Rounded data-end, square at the baseline.
+  function colPath(x, yTop, w, yBase) {
+    const h = yBase - yTop;
+    if (h <= 0.5) return '';
+    const r = Math.min(4, h / 2, w / 2);
+    return `M${x},${yBase}L${x},${yTop + r}Q${x},${yTop} ${x + r},${yTop}L${x + w - r},${yTop}Q${x + w},${yTop} ${x + w},${yTop + r}L${x + w},${yBase}Z`;
+  }
+  // One tooltip for every chart. Content is built with textContent (labels come from user text).
+  function bindTips(root, items) {
+    const tip = $('tip');
+    const show = (el, x, y) => {
+      const it = items[+el.dataset.ti];
+      if (!it) return;
+      tip.replaceChildren();
+      const v = document.createElement('div'); v.className = 'tv'; v.textContent = it.value; tip.appendChild(v);
+      const l = document.createElement('div'); l.className = 'tl'; l.textContent = it.label; tip.appendChild(l);
+      (it.rows || []).forEach((r) => {
+        const row = document.createElement('div'); row.className = 'row';
+        const key = document.createElement('i'); key.style.background = r.color || 'var(--muted)';
+        const tx = document.createElement('span'); tx.textContent = r.text;
+        row.append(key, tx); tip.appendChild(row);
+      });
+      tip.hidden = false;
+      const b = tip.getBoundingClientRect();
+      tip.style.left = `${Math.min(window.innerWidth - b.width - 8, Math.max(8, x + 14))}px`;
+      tip.style.top = `${Math.min(window.innerHeight - b.height - 8, Math.max(8, y + 14))}px`;
+    };
+    root.querySelectorAll('[data-ti]').forEach((el) => {
+      el.addEventListener('pointermove', (e) => show(el, e.clientX, e.clientY));
+      el.addEventListener('pointerleave', () => { tip.hidden = true; });
+      el.addEventListener('focus', () => { const r = el.getBoundingClientRect(); show(el, r.left + r.width / 2, r.top); });
+      el.addEventListener('blur', () => { tip.hidden = true; });
+    });
+  }
+  const isActive = (id) => $(id).classList.contains('active');
+
+  /* ---------- Workload ---------- */
+  function renderWorkload() {
+    if (!current) return;
+    const { plan, settings, live } = current;
+    const today = C.toDay(state.today);
+    const byDay = Object.fromEntries(plan.days.map((d) => [d.day, d]));
+    const lastDue = live.length ? Math.max(...live.map((t) => C.toDay(t.due))) : today;
+    const last = Math.max(today + 13, lastDue, ...plan.days.filter((d) => d.load > 0).map((d) => d.day));
+    const days = [];
+    for (let d = today; d <= last; d++) {
+      const e = byDay[d] || { load: 0, sessions: [] };
+      days.push({ d, cap: C.capacityOn(d, settings), load: e.load, sessions: e.sessions, dues: state.tasks.filter((t) => C.toDay(t.due) === d && !t.completed) });
+    }
+    $('wlRange').textContent = `${C.fmtDay(today)} to ${C.fmtDay(last)}`;
+
+    // KPI tiles
+    const wk = days.slice(0, 7);
+    const wkLoad = wk.reduce((a, x) => a + x.load, 0), wkCap = wk.reduce((a, x) => a + x.cap, 0);
+    const toDue = days.filter((x) => x.d <= lastDue);
+    const allLoad = toDue.reduce((a, x) => a + x.load, 0), allCap = toDue.reduce((a, x) => a + x.cap, 0);
+    const peak = days.reduce((m, x) => (x.load > m.load ? x : m), days[0]);
+    const soon = live.filter((t) => C.toDay(t.due) - today <= 7).sort((a, b) => a.due.localeCompare(b.due));
+    const util = allCap ? allLoad / allCap : 0;
+    $('wlKpis').innerHTML = `
+      <div class="kt"><div class="kl">Next 7 days</div><div class="kv">${f1(wkLoad)}<small>h</small></div><div class="ks">of ${f1(wkCap)}h free</div><div class="meter2"><i style="width:${wkCap ? Math.min(100, (wkLoad / wkCap) * 100) : 0}%"></i></div></div>
+      <div class="kt"><div class="kl">Free time used</div><div class="kv">${Math.round(util * 100)}<small>%</small></div><div class="ks">until ${C.fmtDay(lastDue)}</div><div class="meter2"><i style="width:${Math.min(100, util * 100)}%"></i></div></div>
+      <div class="kt"><div class="kl">Busiest day</div><div class="kv">${f1(peak.load)}<small>h</small></div><div class="ks">${C.fmtDay(peak.d)}</div></div>
+      <div class="kt"><div class="kl">Due in 7 days</div><div class="kv">${soon.length}</div><div class="ks">${soon[0] ? esc(soon[0].title) : 'nothing due'}</div></div>`;
+
+    // Daily columns: free-time track behind, planned hours in front
+    const box = $('wlDaily');
+    const W = Math.max(340, box.clientWidth || 1000), H = 250, L = 34, R = 6, T = 10, B = 46;
+    const n = days.length, band = (W - L - R) / n, bw = Math.min(24, band * 0.64);
+    const maxY = Math.max(4, Math.ceil(Math.max(...days.map((x) => Math.max(x.cap, x.load))) / 2) * 2);
+    const y = (v) => T + (1 - v / maxY) * (H - T - B);
+    const base = y(0);
+    let svg = `<svg class="viz-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Planned study hours per day compared with free time">`;
+    for (let g = 0; g <= maxY; g += 2) svg += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}"/><text class="tick" x="${L - 8}" y="${y(g) + 4}" text-anchor="end">${g}h</text>`;
+    const tips = [];
+    days.forEach((x, i) => {
+      const cx = L + i * band, bx = cx + (band - bw) / 2;
+      const names = x.sessions.map((s) => ({ color: 'var(--viz-accent)', text: `${(taskById(s.id) || {}).title} · ${f1(s.hours)}h` }));
+      x.dues.forEach((t) => names.push({ color: 'var(--text)', text: `Due: ${t.title}` }));
+      tips.push({ value: `${f1(x.load)}h of ${f1(x.cap)}h`, label: C.fmtDay(x.d), rows: names });
+      svg += `<g class="col" ><path class="track" d="${colPath(bx, y(x.cap), bw, base)}"/><path class="fill" d="${colPath(bx, y(Math.min(x.load, maxY)), bw, base)}"/>`;
+      svg += `<rect class="hit" x="${cx}" y="${T}" width="${band}" height="${H - T}" tabindex="0" data-ti="${i}" aria-label="${C.fmtDay(x.d)}: ${f1(x.load)} of ${f1(x.cap)} hours"/></g>`;
+      if (x.dues.length) { const mx = cx + band / 2, my = base + 8; svg += `<path class="due-mark" d="M${mx},${my}l4.5,8h-9z"/>`; }
+      if (i === 0) svg += `<text class="tick today-tick" x="${cx + band / 2}" y="${H - 6}" text-anchor="middle">Today</text>`;
+      else if (C.weekday(x.d) === 1) svg += `<line class="grid" x1="${cx}" x2="${cx}" y1="${T}" y2="${base}" opacity=".6"/><text class="tick" x="${cx + band / 2}" y="${H - 6}" text-anchor="middle">${C.fmtDay(x.d).slice(4)}</text>`;
+    });
+    svg += `<line x1="${L}" x2="${W - R}" y1="${base}" y2="${base}" stroke="var(--faint)" stroke-width="1"/></svg>`;
+    box.innerHTML = svg;
+    bindTips(box, tips);
+    $('wlDailyTable').innerHTML = `<table><thead><tr><th>Day</th><th>Planned (h)</th><th>Free (h)</th><th>Deadlines</th></tr></thead><tbody>${days.map((x) => `<tr><td>${C.fmtDay(x.d)}</td><td>${f1(x.load)}</td><td>${f1(x.cap)}</td><td>${x.dues.length || ''}</td></tr>`).join('')}</tbody></table>`;
+
+    // Week-by-week heat grid (one hue, light to dark)
+    const mon0 = today - ((C.weekday(today) + 6) % 7);
+    let heat = `<div class="heat"><div></div>${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => `<div class="hd">${d}</div>`).join('')}<div class="hd" style="text-align:right">Total</div>`;
+    const htips = [];
+    for (let w = mon0; w <= last; w += 7) {
+      let tl = 0, tc = 0;
+      let cells = '';
+      for (let d = w; d < w + 7; d++) {
+        const x = days.find((k) => k.d === d);
+        if (!x) { cells += `<div class="cell empty"></div>`; continue; }
+        tl += x.load; tc += x.cap;
+        const p = x.cap ? Math.min(1, x.load / x.cap) : 0;
+        const pct = Math.round(p * 85);
+        htips.push({ value: x.cap ? `${Math.round(p * 100)}% of free time` : 'No free time', label: `${C.fmtDay(d)} · ${f1(x.load)}h planned`, rows: x.dues.map((t) => ({ color: 'var(--text)', text: `Due: ${t.title}` })) });
+        cells += `<div class="cell ${pct > 50 ? 'ink' : ''}" style="background:color-mix(in srgb, var(--viz-accent) ${pct}%, var(--panel))" tabindex="0" data-ti="${htips.length - 1}" aria-label="${C.fmtDay(d)}: ${f1(x.load)} of ${f1(x.cap)} hours"><span class="d">${new Date(d * 86400000).getUTCDate()}</span>${x.dues.length ? '<i class="flag"></i>' : ''}</div>`;
+      }
+      heat += `<div class="wk">${C.fmtDay(w).slice(4)}</div>${cells}<div class="tot">${f1(tl)}h<span>of ${f1(tc)}h</span></div>`;
+    }
+    $('wlHeat').innerHTML = heat + '</div>';
+    bindTips($('wlHeat'), htips);
+
+    // Hours left by course (single series)
+    const per = {};
+    live.forEach((t) => { per[t.course] = per[t.course] || { h: 0, n: 0 }; per[t.course].h += C.remaining(t); per[t.course].n += 1; });
+    const rows = Object.entries(per).sort((a, b) => b[1].h - a[1].h);
+    const mx = Math.max(1, ...rows.map((r) => r[1].h));
+    $('wlCourseSub').textContent = `${f1(rows.reduce((a, r) => a + r[1].h, 0))}h in total`;
+    $('wlCourses').innerHTML = rows.map(([c, v]) => `<div class="hb"><div class="hn">${esc(courseName(c).name)}<span>${v.n} task${v.n > 1 ? 's' : ''}</span></div><div class="hv">${f1(v.h)}h</div><div class="ht"><i style="width:${(v.h / mx) * 100}%"></i></div></div>`).join('') || '<div class="muted small">No open tasks</div>';
+  }
+
+  /* ---------- Results ---------- */
+  function renderProof() {
+    const E = window.CRUNCH_EVAL;
+    if (!E) { $('proof').innerHTML = '<div class="empty">Run <code>node eval/run_eval.js</code> to generate results.</div>'; return; }
+    const s = E.summary;
+    const P = [
+      { k: 'crunch', name: 'Dueline', color: 'var(--viz-accent)' },
+      { k: 'lastminute', name: 'Last-minute', color: 'var(--viz-gray-1)' },
+      { k: 'duedate', name: 'Grind', color: 'var(--viz-gray-2)' },
+    ];
+    const ours = s.crunch, lm = s.lastminute, gr = s.duedate;
+    const fewer = Math.round((1 - ours.crunchDays / gr.crunchDays) * 100);
+    const legend = `<div class="legend2">${P.map((p) => `<span><i style="background:${p.color}"></i>${p.name}</span>`).join('')}<span class="muted">Grind = works every free hour</span></div>`;
+    let html = `<div class="res-top">
+      <div class="hero"><div class="hv">${Math.round(ours.onTimePct)}%</div><div class="hl">of deadlines met on time</div><div class="hc">vs ${Math.round(lm.onTimePct)}% working last-minute <span class="delta">+${Math.round(ours.onTimePct - lm.onTimePct)} pts</span></div></div>
+      <div class="kt"><div class="kl">Work left undone</div><div class="kv">${f1(ours.unfinishedHours)}<small>h</small></div><div class="ks">vs ${f1(lm.unfinishedHours)}h last-minute</div></div>
+      <div class="kt"><div class="kl">Crunch days</div><div class="kv">−${fewer}<small>%</small></div><div class="ks">vs grinding every free hour</div></div>
+      <div class="kt"><div class="kl">Test semesters</div><div class="kv">${E.scenarios}</div><div class="ks">never used for tuning</div></div>
+    </div>`;
+
+    // Dot strip: on-time rate per semester, one row per approach
+    html += `<div class="viz-card"><div class="viz-title"><h3>On-time rate in every semester</h3><span class="sub">each dot is one simulated semester</span><span class="spacer"></span>${legend}</div><div id="dotStrip"></div>
+      <div class="note">Grinding meets ${f1(gr.onTimePct - ours.onTimePct)} points more deadlines, at the cost of ${fewer}% more crunch days.</div>
+      <details class="tview"><summary>View as table</summary><table><thead><tr><th>Semester</th>${P.map((p) => `<th>${p.name}</th>`).join('')}</tr></thead><tbody>${E.rows.map((r) => `<tr><td>#${r.seed}</td>${P.map((p) => `<td>${Math.round(r[p.k].onTimePct)}%</td>`).join('')}</tr>`).join('')}</tbody></table></details></div>`;
+
+    // Small multiples: one card per metric
+    const M = [
+      ['Deadlines missed', 'missed', 'per semester · fewer is better', false],
+      ['Work left undone', 'unfinishedHours', 'hours at the deadline · less is better', false],
+      ['Crunch days', 'crunchDays', 'days with 7h+ of work · fewer is better', false],
+      ['Busiest day', 'peakDay', 'hours · lower is better', false],
+      ['Finished early', 'avgBufferDays', 'days before the deadline · more is better', true],
+      ['Part 2 before Part 1', 'depViolations', 'order mistakes per semester · fewer is better', false],
+    ];
+    html += `<div class="section-h">Every metric</div><div class="mult">${M.map(([title, k, unit]) => {
+      const mx = Math.max(...P.map((p) => s[p.k][k])) || 1;
+      return `<div class="mcard"><h4>${title}</h4><div class="mu">${unit}</div>${P.map((p, i) => `<div class="mbar ${i === 0 ? 'ours' : ''}"><span class="n">${p.name}</span><span class="t"><i style="width:${(s[p.k][k] / mx) * 100}%;background:${p.color}"></i></span><span class="v">${f1(s[p.k][k])}</span></div>`).join('')}</div>`;
+    }).join('')}</div>
+    <details class="tview"><summary>View as table</summary><table><thead><tr><th>Metric (mean per semester)</th>${P.map((p) => `<th>${p.name}</th>`).join('')}</tr></thead><tbody>${[['On-time %', 'onTimePct'], ...M.map((m) => [m[0], m[1]])].map(([t, k]) => `<tr><td>${t}</td>${P.map((p) => `<td>${f1(s[p.k][k])}</td>`).join('')}</tr>`).join('')}</tbody></table></details>`;
+
+    // Method as numbers
+    html += `<div class="section-h">How it was tested</div><div class="chips">
+      <div class="chipn"><b>${E.scenarios}</b><span>test semesters</span></div>
+      <div class="chipn"><b>1.25×</b><span>typical effort overrun</span></div>
+      <div class="chipn"><b>+1</b><span>surprise task each</span></div>
+      <div class="chipn"><b>−3 days</b><span>one deadline moved up</span></div>
+      <div class="chipn"><b>2</b><span>sick days each</span></div>
+      <div class="chipn"><b>30</b><span>tuning semesters, kept apart</span></div>
+    </div>
+    <div class="note">Every approach replans daily with only what a student would know that day. Simulated semesters, not real students. Reproduce with <code>node eval/run_eval.js</code>.</div>`;
+    $('proof').innerHTML = html;
+    drawDots(E, P);
+  }
+
+  function drawDots(E, P) {
+    const box = $('dotStrip');
+    if (!box) return;
+    const W = Math.max(340, box.clientWidth || 1000), rowH = 58, L = 96, R = 56, T = 8, B = 28;
+    const H = T + rowH * P.length + B;
+    const x = (v) => L + (v / 100) * (W - L - R);
+    let svg = `<svg class="viz-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="On-time rate per simulated semester for each approach">`;
+    [0, 25, 50, 75, 100].forEach((v) => { svg += `<line class="grid" x1="${x(v)}" x2="${x(v)}" y1="${T}" y2="${H - B}"/><text class="tick" x="${x(v)}" y="${H - 8}" text-anchor="middle">${v}%</text>`; });
+    const tips = [];
+    P.forEach((p, ri) => {
+      const cy = T + ri * rowH + rowH / 2;
+      svg += `<text x="${L - 14}" y="${cy + 4}" text-anchor="end" font-size="12.5" fill="var(--text)" font-weight="${ri === 0 ? 600 : 400}">${p.name}</text>`;
+      const buckets = {};
+      E.rows.forEach((r) => {
+        const v = r[p.k].onTimePct;
+        const b = Math.round(v / 2);
+        const k = buckets[b] = (buckets[b] || 0) + 1;
+        const off = (k % 2 ? 1 : -1) * Math.floor(k / 2) * 5;
+        const cyy = cy + Math.max(-rowH / 2 + 6, Math.min(rowH / 2 - 6, off));
+        tips.push({ value: `${Math.round(v)}% on time`, label: `Semester #${r.seed} · ${p.name}`, rows: P.filter((q) => q.k !== p.k).map((q) => ({ color: q.color, text: `${q.name}: ${Math.round(r[q.k].onTimePct)}%` })) });
+        svg += `<circle cx="${x(v)}" cy="${cyy}" r="4" fill="${p.color}" stroke="var(--surface)" stroke-width="2"/>`;
+        svg += `<circle class="hit" cx="${x(v)}" cy="${cyy}" r="9" tabindex="0" data-ti="${tips.length - 1}"/>`;
+      });
+      const mean = E.summary[p.k].onTimePct;
+      svg += `<line x1="${x(mean)}" x2="${x(mean)}" y1="${cy - rowH / 2 + 4}" y2="${cy + rowH / 2 - 4}" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/>`;
+      svg += `<text x="${W - R + 10}" y="${cy + 4}" font-size="13" font-weight="700" fill="var(--text)">${Math.round(mean)}%</text>`;
+    });
+    box.innerHTML = svg + '</svg>';
+    bindTips(box, tips);
+  }
+
+  // Charts size to their container, so redraw on resize and when a tab opens.
+  let rz;
+  window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (isActive('tab-workload')) renderWorkload(); if (isActive('tab-proof')) drawDots(window.CRUNCH_EVAL, [{ k: 'crunch', name: 'Dueline', color: 'var(--viz-accent)' }, { k: 'lastminute', name: 'Last-minute', color: 'var(--viz-gray-1)' }, { k: 'duedate', name: 'Grind', color: 'var(--viz-gray-2)' }]); }, 150); });
+  $('tabs').addEventListener('click', () => { requestAnimationFrame(() => { if (isActive('tab-workload')) renderWorkload(); if (isActive('tab-proof')) renderProof(); }); });
 
   render();
 })();
