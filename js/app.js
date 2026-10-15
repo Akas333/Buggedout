@@ -561,6 +561,7 @@
   /* ---------- Schedule tab: month / week / day calendar ---------- */
   const PILL = [['#e0ecff', '#1d4ed8'], ['#fce7f3', '#be185d'], ['#e3f5e1', '#2f7d32'], ['#efe4ff', '#6d28d9'], ['#fff1d6', '#b45309'], ['#dff6f4', '#0f766e'], ['#ffe8e0', '#c2410c'], ['#eceef3', '#3f4756']];
   const cal = { cursor: null, view: 'month', hidden: new Set(), q: '' };
+  const isPhone = () => window.matchMedia('(max-width: 760px)').matches;
   const coursePill = (course) => PILL[Math.max(0, [...new Set(state.tasks.map((t) => t.course))].indexOf(course)) % PILL.length];
   const DAYMS = 86400000;
   const monthStart = (d) => { const x = new Date(d * DAYMS); return Math.round(Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), 1) / DAYMS); };
@@ -630,7 +631,7 @@
       const max = opts.max || 3;
       const shown = list.slice(0, max).map((e) => pillHtml(e, opts.time)).join('');
       const more = list.length > max ? `<div class="more-n">+${list.length - max} more</div>` : '';
-      return `<div class="mcell ${opts.out ? 'out' : ''} ${d < today ? 'past' : ''} ${d === today ? 'today' : ''} ${d === cal.cursor ? 'sel' : ''}" data-d="${d}"><div class="num">${new Date(d * DAYMS).getUTCDate()}</div>${shown}${more}</div>`;
+      return `<div class="mcell ${opts.out ? 'out' : ''} ${d < today ? 'past' : ''} ${d === today ? 'today' : ''} ${d === cal.cursor ? 'sel' : ''}" data-d="${d}"><div class="num">${new Date(d * DAYMS).getUTCDate()}</div><span class="wdl">${C.fmtDay(d).slice(0, 3)}</span>${shown}${more}</div>`;
     };
     const heads = C.WD.map((w) => `<div class="head">${w}</div>`).join('');
     if (cal.view === 'month') {
@@ -657,6 +658,7 @@
     $('calGrid').querySelectorAll('[data-id]').forEach((el) => el.addEventListener('click', (e) => { e.stopPropagation(); openTask(el.dataset.id); }));
     $('calGrid').querySelectorAll('.mcell').forEach((el) => el.addEventListener('click', () => {
       const d = +el.dataset.d;
+      if (isPhone()) { cal.cursor = d; cal.view = 'day'; renderPlan(); return; }
       if (d >= today) { $('fDue').value = C.fromDay(d); openNew('one'); } else { cal.cursor = d; renderPlan(); }
     }));
   }

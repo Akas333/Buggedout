@@ -226,7 +226,7 @@
     const res = await fetch(OCR_SPACE, { method: 'POST', body: fd });
     const json = await res.json();
     if (json.IsErroredOnProcessing) throw new Error([].concat(json.ErrorMessage || 'OCR.space error').join(' '));
-    return (json.ParsedResults || []).map((r) => r.ParsedText).join('\n').replace(/\t/g, ' | ');
+    return (json.ParsedResults || []).map((r) => r.ParsedText).join('\n').replace(/[ \t]+$/gm, '').replace(/\t+/g, ' | ');
   }
 
   async function imageToText(blob, progress) {
@@ -341,8 +341,8 @@
   }
 
   const ROUTES = [
-    { name: 'direct', url: (u) => u },
-    { name: 'allorigins.win', url: (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` },
+    { name: 'direct', url: (u) => u, ms: 12000 },
+    { name: 'allorigins.win', url: (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, ms: 12000 },
   ];
 
   async function fetchWithTimeout(url, ms = 20000) {
@@ -358,7 +358,7 @@
     for (const route of ROUTES) {
       try {
         progress && progress(null, route.name === 'direct' ? 'Fetching link…' : `Fetching through ${route.name}…`);
-        const res = await fetchWithTimeout(route.url(url));
+        const res = await fetchWithTimeout(route.url(url), route.ms);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const blob = await res.blob();
         if (!blob.size) throw new Error('empty response');
@@ -373,7 +373,7 @@
       progress && progress(null, 'Fetching through r.jina.ai…');
       const res = await fetchWithTimeout(`https://r.jina.ai/${url}`, 40000);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const text = (await res.text()).replace(/^(Title|URL Source|Published Time|Markdown Content):.*$/gm, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
+      const text = (await res.text()).replace(/^(Title|URL Source|Published Time|Markdown Content|Warning|Number of Pages):.*$/gm, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
       return { text: tidy(text), method: 'Web page via r.jina.ai', name };
     } catch (e) { errors.push(`r.jina.ai: ${e.message}`); }
     throw new Error(`Couldn't read that link. Is it public? (${errors.join('; ')})`);
