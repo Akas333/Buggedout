@@ -79,29 +79,54 @@
 
   const COURSE_RE = /\b([A-Z]{2,5}\s?\d{3,4}[A-Z]?)\b/;
   const SOURCE_RE = /^-{3}\s*from\s+(.+?)\s*-{3}$/i;
+  // Copied or exported chat messages: "[10/10/26, 9:41 am] Prof. Kumar: DA 2 due Friday" (WhatsApp iOS/desktop)
+  // or "10/10/26, 9:41 pm - Prof. Kumar: ..." (WhatsApp Android). The timestamp is when the message was sent,
+  // not the deadline, so it is removed and "Friday" or "tomorrow" is counted from the day it was sent.
+  const CHAT_RE = /^\[?(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4}),?\s+\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\s*(?:[ap]\.?\s?m\.?)?\]?\s*(?:[-–]\s*)?([^:]{1,60}?):(?:\s+(.*))?$/i;
+  function chatDay(m) {
+    let d = +m[1], mo = +m[2], y = +m[3];
+    if (mo > 12 && d <= 12) [d, mo] = [mo, d]; // US-style export
+    return Math.round(Date.UTC(y < 100 ? y + 2000 : y, mo - 1, d) / DAY);
+  }
+  const TASK_WORDS = /\b(due|deadline|submit|submission|exam(ination)?s?|tests?|assessments?)\b/i;
 
   function extractTasks(text, startIso) {
     const startDay = toDay(startIso);
     const tasks = [], ignored = [];
-    let course = 'General', file = null;
+    let course = 'General', file = null, sentDay = null;
     const lines = text.split(/\r?\n/);
     lines.forEach((raw, idx) => {
-      const line = raw.trim();
+      const rawLine = raw.replace(/^[‎‏﻿]+/, '').trim();
+      let line = rawLine;
       if (!line) return;
       // "--- from timetable.png (OCR) ---" starts a new imported document.
       const marker = line.match(SOURCE_RE);
-      if (marker) { file = marker[1]; course = 'General'; return; }
-      const date = parseDate(line, startDay);
+      if (marker) { file = marker[1]; course = 'General'; sentDay = null; return; }
+      // A sender name never holds a task word, so "20/10/26, 11:59 pm - Lab record: submit" stays a deadline line.
+      const chat = line.match(CHAT_RE);
+      const isChat = chat && !TYPES.some((t) => t.re.test(chat[4])) && !TASK_WORDS.test(chat[4]);
+      if (isChat) {
+        sentDay = chatDay(chat);
+        line = (chat[5] || '').trim();
+        if (!line || /^<?(media|image|video|audio|document|sticker|gif) omitted>?$|^this message was deleted$/i.test(line)) return;
+        if (/\?\s*$/.test(line)) { ignored.push({ line: idx + 1, text: rawLine, why: 'a question in the chat, not an announcement', file }); return; }
+      }
+      // Lines after a chat message (multi-line messages) keep counting from the day it was sent.
+      const anchor = sentDay == null ? startDay : sentDay;
+      const date = parseDate(line, anchor);
       const typeHit = TYPES.find((t) => t.re.test(line));
       const code = line.match(COURSE_RE);
       // A header line names a course and has no date, e.g. "BCSE302L - Database Systems".
-      if (!date && (code || /^(course|subject)\s*[:\-]/i.test(line) || /:$/.test(line))) {
+      if (!date && sentDay == null && (code || /^(course|subject)\s*[:\-]/i.test(line) || /:$/.test(line))) {
         course = line.replace(/^(course|subject)\s*[:\-]\s*/i, '').replace(/[:\-–]+\s*$/, '').trim().slice(0, 48);
         return;
       }
-      if (!date) { ignored.push({ line: idx + 1, text: line, why: 'no date found', file }); return; }
-      if (!typeHit && !/\b(due|deadline|submit|submission|exam(ination)?s?|tests?|assessments?)\b/i.test(line)) {
-        ignored.push({ line: idx + 1, text: line, why: 'date found but no task keyword', file }); return;
+      if (!date) { ignored.push({ line: idx + 1, text: rawLine, why: 'no date found', file }); return; }
+      if (!typeHit && !TASK_WORDS.test(line)) {
+        ignored.push({ line: idx + 1, text: rawLine, why: 'date found but no task keyword', file }); return;
+      }
+      if (sentDay != null && date.day < startDay) {
+        ignored.push({ line: idx + 1, text: rawLine, why: `old message: that deadline (${fmtDay(date.day)}) has passed`, file }); return;
       }
       const type = typeHit ? typeHit.type : 'assignment';
       const effM = line.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hours?)\b(?!\s*(?:am|pm))/i);
@@ -134,10 +159,10 @@
         doneH: 0,
         weight: wM ? Math.min(100, +wM[1]) : null,
         deps: [],
-        source: file ? { line: idx + 1, text: line, file } : { line: idx + 1, text: line },
+        source: file ? { line: idx + 1, text: rawLine, file } : { line: idx + 1, text: rawLine },
         confidence: typeHit ? date.confidence : 'low',
         effortSource: effM ? 'stated in text' : `default for ${typeInfo(type).label.toLowerCase()}`,
-        notes: [],
+        notes: sentDay != null && date.text && !/\d/.test(date.text) ? [`"${date.text}" counted from ${fmtDay(sentDay)}, when the message was sent`] : [],
       });
     });
     inferDependencies(tasks);

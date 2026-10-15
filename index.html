@@ -7,6 +7,7 @@
 <meta name="description" content="Paste your syllabus and deadlines. Dueline builds a study plan that fits your free time, explains every priority, and replans when things change.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='none' stroke='%23ee6352' stroke-width='4' stroke-dasharray='58 100' stroke-linecap='round' transform='rotate(-210 16 16)'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23ee6352'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/onboarding.css">
 <script>try { var t = localStorage.getItem("dueline-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 </head>
 <body>
@@ -66,9 +67,13 @@
     <button class="btn primary small" id="btnNewTop" aria-label="New deadline"><svg class="i"><use href="#i-plus"/></svg><span class="lbl">New deadline</span></button>
     <button class="icon-btn" id="themeBtn" aria-label="Toggle dark mode" title="Toggle dark mode"><svg class="i"><use href="#i-moon"/></svg></button>
     <button class="icon-btn" id="bellBtn" aria-label="At-risk alerts"><svg class="i"><use href="#i-bell"/></svg><i class="bell-dot" id="bellDot" hidden></i></button>
-    <button class="icon-btn" id="menuBtn" aria-label="Sample data and reset" title="Sample data"><svg class="i"><use href="#i-user"/></svg></button>
+    <button class="icon-btn" id="menuBtn" aria-label="Account and sync" title="Sign in to sync across devices"><svg class="i"><use href="#i-user"/></svg></button>
   </div>
 </header>
+<div class="sample-bar" id="sampleBar" hidden>
+  <span><b>This is a sample semester.</b> <span class="sb-more">Set up yours and every page fills with your own deadlines.</span></span>
+  <button class="btn primary small" id="btnSetupMine" type="button">Set up mine</button>
+</div>
 
 <main class="tab active" id="tab-home">
   <div class="home">
@@ -86,10 +91,7 @@
           <div><h3>Deadlines ahead</h3><span class="muted small" id="radarSub">next 14 days</span></div>
           <button class="btn primary small" id="btnOpenPaste"><svg class="i"><use href="#i-plus"/></svg>Add</button>
         </div>
-        <div id="radarViz" class="radar-viz"></div>
         <div class="radar-buckets" id="radarBuckets"></div>
-        <div class="radar-import" id="extractInfo"></div>
-        <button class="btn ghost wide paste-btn" id="btnPasteMany"><svg class="i"><use href="#i-file"/></svg>Paste a syllabus or announcement</button>
       </div>
 
       <details class="settings">
@@ -270,16 +272,8 @@
         <button class="btn primary" id="btnExtract" type="button">Add deadlines</button>
         <button class="btn gemma" id="btnGemma" type="button"><svg class="i"><use href="#i-zap"/></svg>Read with Gemma 4</button>
       </div>
-      <details class="gemma-set" id="gemmaSet">
-        <summary>Gemma 4 settings</summary>
-        <div class="gemma-key">
-          <input type="password" id="gemmaKey" placeholder="Paste your free Gemini API key" autocomplete="off" spellcheck="false" aria-label="Gemini API key">
-          <button class="btn small" type="button" id="gemmaKeySave">Save</button>
-          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="gk-link">Get a free key ↗</a>
-        </div>
-        <p class="muted small gk-note">Gemma 4 reads messy text and screenshots directly. Your key stays in this browser. On Google's free tier, inputs may be used to improve Google's products. Screenshots are read in your browser first; links that block direct access go through allorigins.win or r.jina.ai.</p>
-      </details>
-      <div class="add-foot"><button class="linkish" id="btnDemo" type="button">Load sample semester</button><span>·</span><button class="linkish" id="btnReset" type="button">Clear all</button><span class="spacer"></span><button class="linkish pasteCancel" type="button">Cancel</button></div>
+      <p class="muted small gemma-note">Gemma 4 reads messy text and screenshots. It runs on free tiers (Google, OpenRouter, Cloudflare, NVIDIA) that may keep inputs to improve their models.</p>
+      <div class="add-foot"><button class="linkish" id="btnDemo" type="button">Load sample semester</button><span>·</span><button class="linkish" id="btnReset" type="button">Start over</button><span class="spacer"></span><button class="linkish pasteCancel" type="button">Cancel</button></div>
     </div>
 
     <form id="oneForm" class="form-grid" hidden>
@@ -297,6 +291,13 @@
     </form>
   </div>
 </div>
+<!-- Account and sync -->
+<div class="drawer" id="accountModal" hidden>
+  <div class="drawer-card account-card">
+    <button class="close" id="accountClose" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button>
+    <div id="accountBody"></div>
+  </div>
+</div>
 <div class="toast" id="toast" hidden></div>
 
 <script src="js/engine.js"></script>
@@ -304,6 +305,8 @@
 <script src="js/eval_results.js"></script>
 <script src="js/importer.js"></script>
 <script src="js/gemma.js"></script>
+<script src="js/sync.js"></script>
+<script src="js/onboarding.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

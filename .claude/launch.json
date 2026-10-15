@@ -24,6 +24,42 @@
         "127.0.0.1"
       ],
       "port": 8766
+    },
+    {
+      "name": "crunch-sync",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8767",
+        "--bind",
+        "127.0.0.1"
+      ],
+      "port": 8767
+    },
+    {
+      "name": "crunch-api",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8768",
+        "--bind",
+        "127.0.0.1"
+      ],
+      "port": 8768
+    },
+    {
+      "name": "crunch-onboard",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8769",
+        "--bind",
+        "127.0.0.1"
+      ],
+      "port": 8769
     }
   ]
 }

@@ -1,21 +1,19 @@
 /* Gemma 4 extraction: messy text and screenshots in, structured deadlines out.
  *
- * Calls Gemma 4 through the Gemini API. Two ways to reach it:
- *  1. /api/gemma, a serverless proxy (Vercel) that holds the key as an env variable, so visitors need no key.
- *  2. Directly from the browser with the student's own key, kept only in this browser (localStorage).
+ * Calls Gemma 4 through /api/gemma, a serverless proxy (Vercel) that holds the provider keys as env variables,
+ * so visitors need no key. On the Vercel site it's same-origin; GitHub Pages and local dev call REMOTE_PROXY.
  *
  * Every item Gemma returns is checked against the input: its quoted source must appear in the text,
  * otherwise it is marked "check this". Dates must parse and fall in a sane range.
  */
 (function () {
   'use strict';
-  const MODELS = ['gemma-4-26b-a4b-it', 'gemma-4-31b-it'];
-  const KEY_STORE = 'dueline-gemini-key';
+  // The Vercel deployment of this repo, e.g. 'https://your-project.vercel.app/api/gemma'. Used by GitHub Pages and local dev.
+  const REMOTE_PROXY = '';
   const TYPES = ['exam', 'midterm', 'quiz', 'project', 'presentation', 'report', 'lab', 'assignment'];
   const MAX_IMAGES = 4;
 
-  const getKey = () => { try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } };
-  const setKey = (k) => { try { if (k) localStorage.setItem(KEY_STORE, k.trim()); else localStorage.removeItem(KEY_STORE); } catch (e) { /* storage blocked */ } };
+  try { localStorage.removeItem('dueline-gemini-key'); } catch (e) { /* keys used to be stored here; no longer needed */ }
 
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -51,27 +49,20 @@ ${text || '(no text, see images)'}`;
     return arr;
   }
 
-  async function callGemma(parts, apiKey) {
+  async function callGemma(parts) {
     const body = JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { temperature: 0.1, maxOutputTokens: 4096 } });
-    // 1) Server-side proxy (Vercel), if this deployment has one.
-    if (!location.hostname.endsWith('github.io') && location.protocol !== 'file:') {
-      try {
-        const r = await fetch('/api/gemma', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
-        if (r.ok) return { json: await r.json(), via: 'Dueline server' };
-      } catch (e) { /* no proxy here, fall back to the student's key */ }
-    }
-    // 2) Directly from the browser with the student's key.
-    if (!apiKey) { const e = new Error('Add your free Gemini API key to use Gemma 4'); e.code = 'NO_KEY'; throw e; }
-    let lastErr;
-    for (const model of MODELS) {
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body,
-      });
+    const local = location.protocol === 'file:' || location.hostname.endsWith('github.io') || /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+    const urls = (local ? [REMOTE_PROXY] : ['/api/gemma', REMOTE_PROXY]).filter(Boolean);
+    let lastErr = new Error('Gemma 4 is not reachable right now. The regular extractor still works');
+    for (const url of urls) {
+      let r;
+      try { r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }); }
+      catch (e) { continue; } // offline, or this site has no proxy
       const json = await r.json().catch(() => ({}));
-      if (r.ok) return { json, via: model };
-      lastErr = new Error((json.error && json.error.message) || `Gemini API error ${r.status}`);
-      lastErr.status = r.status;
-      if (r.status !== 404) break; // only try the next model if this one isn't available
+      if (r.ok) return { json, via: json.via || 'Gemma 4' };
+      if (r.status === 404 || r.status === 405 || r.status === 501) continue; // no proxy (or no keys) at this URL
+      lastErr = new Error((json.error && json.error.message) || `Gemma 4 error ${r.status}`);
+      break;
     }
     throw lastErr;
   }
@@ -83,7 +74,7 @@ ${text || '(no text, see images)'}`;
     const imgs = images.slice(0, MAX_IMAGES);
     const parts = [{ text: buildPrompt(text, today, imgs.length) }];
     for (const f of imgs) parts.push({ inline_data: { mime_type: f.type || 'image/png', data: await fileToBase64(f) } });
-    const { json, via } = await callGemma(parts, getKey());
+    const { json, via } = await callGemma(parts);
     const out = ((json.candidates || [])[0] || {}).content || {};
     const raw = (out.parts || []).filter((p) => !p.thought && p.text).map((p) => p.text).join('\n');
     const items = parseJsonArray(raw);
@@ -131,5 +122,5 @@ ${text || '(no text, see images)'}`;
     return { tasks, ignored: skipped, meta: { via, images: imgs.length, verified: tasks.filter((t) => t.confidence === 'high').length } };
   }
 
-  window.DuelineGemma = { extract, getKey, setKey, MODELS };
+  window.DuelineGemma = { extract };
 })();

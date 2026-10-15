@@ -9,7 +9,10 @@
   const KEY = 'dueline-state-v1';
   const ic = (name, cls = '') => `<svg class="i ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 
-  let state = loadState() || demoState();
+  const stored = loadState();
+  // First visit: the sample semester waits behind the setup screens until the student finishes or skips them.
+  let state = stored || { ...demoState(), welcome: true };
+  let savedJson = JSON.stringify(state); // what's in storage, so sync only hears about real changes
   let current = null; // last computed plan bundle
 
   function demoState() {
@@ -21,10 +24,14 @@
     const finished = tasks.find((t) => /Lab experiment 5/.test(t.title));
     if (finished) { finished.completed = true; finished.doneH = finished.effortH; }
     const activity = { '2026-10-13': finished ? finished.effortH : 0, '2026-10-14': started ? 2 : 0 };
-    return { activity, today: S.today, text: S.text, tasks, ignored, settings: JSON.parse(JSON.stringify({ ...S.settings, prior: 1 })), log: null, nextId: tasks.length + 1 };
+    return { activity, today: S.today, text: S.text, tasks, ignored, settings: JSON.parse(JSON.stringify({ ...S.settings, prior: 1 })), log: null, nextId: tasks.length + 1, sample: true };
   }
   function loadState() { try { const s = JSON.parse(localStorage.getItem(KEY)); return s && s.tasks ? s : null; } catch (e) { return null; } }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable: still works in-memory */ } }
+  function save() {
+    const json = JSON.stringify(state);
+    try { localStorage.setItem(KEY, json); } catch (e) { /* storage unavailable: still works in-memory */ }
+    if (json !== savedJson) { savedJson = json; if (window.DuelineSync) window.DuelineSync.changed(); }
+  }
 
   const courseColor = (course) => {
     const courses = [...new Set(state.tasks.map((t) => t.course))];
@@ -64,8 +71,11 @@
     renderTasks();
     renderProof();
     renderWorkload();
+    $('sampleBar').hidden = !isSample();
     save();
   }
+  // Older saves have no flag; the untouched sample text gives them away.
+  const isSample = () => !!state.sample || (!state.onboarded && state.text === S.text);
 
   function renderSide() {
     const grid = $('availGrid');
@@ -79,11 +89,6 @@
     $('commitList').innerHTML = (state.settings.commitments || []).map((c, i) =>
       `<div class="commit"><span>${esc(C.fmtDay(C.toDay(c.date)))} · ${c.hours}h · ${esc(c.label || 'busy')}</span><button data-i="${i}" aria-label="Remove">×</button></div>`).join('') || '<div class="hint">None yet</div>';
     $('commitList').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { state.settings.commitments.splice(+b.dataset.i, 1); render(); }));
-    const n = state.tasks.length;
-    const lines = (state.text || '').split(/\r?\n/).filter((l) => l.trim()).length;
-    $('extractInfo').innerHTML = !n ? '' : lines
-      ? `<span class="st"><b>${lines}</b> lines</span><span class="arrow">→</span><span class="st"><b>${n}</b> deadlines</span><span class="st"><b>${state.ignored.length}</b> skipped</span>`
-      : `<span class="st"><b>${n}</b> deadlines added</span>`;
   }
 
   function renderKpis() {
@@ -173,6 +178,7 @@
   const courseIndex = (course) => Math.max(0, [...new Set(state.tasks.map((t) => t.course))].indexOf(course));
   const courseTile = (course, size = 28) => { const i = courseIndex(course); return `<span class="ctile" style="--s:${size}px;background:${TILE_BG[i % TILE_BG.length]}" title="${esc(courseName(course).name)}" aria-hidden="true">${SHAPES[i % SHAPES.length]}</span>`; };
   const decoTile = (i, size = 34) => `<span class="ctile deco" style="--s:${size}px;background:${TILE_BG[i % TILE_BG.length]}" aria-hidden="true">${SHAPES[i % SHAPES.length]}</span>`;
+  const tileAt = (i, size) => `<span class="ctile" style="--s:${size}px;background:${TILE_BG[i % TILE_BG.length]}" aria-hidden="true">${SHAPES[i % SHAPES.length]}</span>`;
   const clockIcon = (c) => `<svg width="13" height="13" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="${c}"/><path d="M12 6v6l4 2" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>`;
   function openCourse(c) {
     const ts = state.tasks.filter((t) => t.course === c).sort((a, b) => a.due.localeCompare(b.due));
@@ -498,24 +504,9 @@
       renderPreview();
       toast(`Gemma 4 found ${r.tasks.length} deadlines. Check them, then add`);
     } catch (e) {
-      if (e.code === 'NO_KEY') { $('gemmaSet').open = true; $('gemmaKey').focus(); }
       toast(e.message || 'Gemma 4 failed. The regular extractor still works');
     } finally { btn.disabled = false; btn.innerHTML = label; }
   });
-  function renderGemmaKey() {
-    if (!window.DuelineGemma) return;
-    const has = !!window.DuelineGemma.getKey();
-    $('gemmaKey').placeholder = has ? 'Key saved in this browser ✓' : 'Paste your free Gemini API key';
-    $('gemmaKeySave').textContent = $('gemmaKey').value.trim() ? 'Save' : has ? 'Remove' : 'Save';
-  }
-  $('gemmaKey').addEventListener('input', renderGemmaKey);
-  $('gemmaKeySave').addEventListener('click', () => {
-    const v = $('gemmaKey').value.trim();
-    if (v) { window.DuelineGemma.setKey(v); $('gemmaKey').value = ''; toast('Gemma 4 key saved in this browser'); }
-    else if (window.DuelineGemma.getKey()) { window.DuelineGemma.setKey(''); toast('Key removed'); }
-    renderGemmaKey();
-  });
-  renderGemmaKey();
 
   /* ---------- import: files, screenshots and links become text in the box above ---------- */
   const importList = []; // { name, status: 'busy' | 'done' | 'error', msg, pct }
@@ -560,15 +551,16 @@
   ['dragleave', 'drop'].forEach((ev) => $('dropZone').addEventListener(ev, () => $('dropZone').classList.remove('over')));
   // Files dropped anywhere (not on the task board) are imported instead of opening in the tab.
   document.addEventListener('dragover', (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+  const onboarding = () => !!(window.DuelineOnboarding && window.DuelineOnboarding.isOpen()); // setup reads its own files
   document.addEventListener('drop', (e) => {
-    if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+    if (!e.dataTransfer || !e.dataTransfer.files.length || onboarding()) return;
     e.preventDefault();
     importFiles(e.dataTransfer.files);
   });
   // A screenshot on the clipboard (⌘V / Ctrl+V) is read like an uploaded image. Plain text pastes as usual.
   document.addEventListener('paste', (e) => {
     const files = [...(e.clipboardData ? e.clipboardData.files : [])];
-    if (!files.length) return;
+    if (!files.length || onboarding()) return;
     e.preventDefault();
     importFiles(files.map((f, i) => (f.name && f.name !== 'image.png' ? f : new File([f], `Pasted screenshot${files.length > 1 ? ` ${i + 1}` : ''}.${(f.type.split('/')[1] || 'png')}`, { type: f.type }))));
   });
@@ -582,7 +574,7 @@
   });
 
   $('btnDemo').addEventListener('click', () => { state = demoState(); $('pasteModal').hidden = true; render(); toast('Sample semester loaded'); });
-  $('btnReset').addEventListener('click', () => { const now = new Date(); const realToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; state = { ...demoState(), today: realToday, activity: {}, text: '', tasks: [], ignored: [], log: null }; $('pasteModal').hidden = true; render(); });
+  $('btnReset').addEventListener('click', () => { $('pasteModal').hidden = true; openOnboarding(false); });
   $('bufferDays').addEventListener('change', (e) => { state.settings.bufferDays = Math.max(0, +e.target.value || 0); render(); });
   $('prior').addEventListener('change', (e) => { state.settings.prior = Math.min(2, Math.max(1, +e.target.value || 1)); render(); });
   $('commitForm').addEventListener('submit', (e) => {
@@ -640,7 +632,7 @@
     const label = (C.TYPES.find((x) => x.type === r.type) || {}).label || r.type;
     $('quickParse').innerHTML = `<span>${ic('calendar')}${C.fmtDay(C.toDay(r.due))}</span><span>${esc(label)}</span>${course ? `<span>${esc(shortCourse(course))}</span>` : ''}${r.weight != null ? `<span>${r.weight}%</span>` : ''}${r.effortSource === 'stated in text' ? `<span>${r.effortH}h</span>` : ''}<span class="qp-ok">${ic('check')}Press Enter to add</span>`;
   });
-  $('menuBtn').addEventListener('click', () => openNew('many'));
+  $('menuBtn').addEventListener('click', openAccount);
   $('pasteClose').addEventListener('click', () => { $('pasteModal').hidden = true; });
   document.querySelectorAll('.pasteCancel').forEach((b) => b.addEventListener('click', () => { $('pasteModal').hidden = true; }));
   $('pasteModal').addEventListener('click', (e) => { if (e.target.id === 'pasteModal') $('pasteModal').hidden = true; });
@@ -664,7 +656,136 @@
   });
   $('drawerClose').addEventListener('click', () => { $('drawer').hidden = true; });
   $('drawer').addEventListener('click', (e) => { if (e.target.id === 'drawer') $('drawer').hidden = true; });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('drawer').hidden = true; $('pasteModal').hidden = true; } });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('drawer').hidden = true; $('pasteModal').hidden = true; closeAccount(); } });
+
+  /* ---------- account and sync (js/sync.js) ---------- */
+  const Sync = window.DuelineSync;
+  let syncInfo = { phase: Sync ? 'loading' : 'unavailable', error: Sync ? '' : 'The sync module failed to load.' };
+  let choice = null; // { kind, info, resolve } while the account pop-up asks which plan to keep
+  let shownError = '';
+
+  const ago = (iso) => {
+    const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (!iso || m < 1) return 'just now';
+    if (m < 60) return `${m} min ago`;
+    if (m < 24 * 60) return `${Math.round(m / 60)} h ago`;
+    return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  };
+  const avatar = (u) => u.avatar
+    ? `<img class="avatar" src="${esc(u.avatar)}" alt="" referrerpolicy="no-referrer">`
+    : `<span class="initial">${esc((u.name || '?').trim()[0].toUpperCase())}</span>`;
+
+  function openAccount() { renderAccount(); $('accountModal').hidden = false; }
+  function closeAccount() { $('accountModal').hidden = true; answer(null); }
+  function ask(kind, info) { return new Promise((resolve) => { answer(null); choice = { kind, info, resolve }; openAccount(); }); }
+  function answer(v) { const c = choice; choice = null; if (c) c.resolve(v); }
+
+  function statusLine(s) {
+    switch (s.phase) {
+      case 'syncing': return `${ic('clock')}Saving to your account…`;
+      case 'synced': return s.pending ? `${ic('clock')}Saving to your account…` : `${ic('check-circle')}Saved to your account · ${ago(s.at)}`;
+      case 'offline': return `${ic('alert')}Offline. Changes stay in this browser and sync when you're back.`;
+      case 'paused': return `${ic('alert')}Sync is paused until you choose which plan to keep.`;
+      case 'error': return `${ic('alert')}Couldn't sync: ${esc(s.error)}`;
+      default: return `${ic('clock')}Connecting…`;
+    }
+  }
+
+  function choiceHtml() {
+    const { kind, info } = choice;
+    const n = (k) => `${k} deadline${k === 1 ? '' : 's'}`;
+    if (kind === 'unsynced') return `
+      <h3>Sign out without saving?</h3>
+      <p class="muted">Some changes haven't reached your account yet. Signing out removes them from this browser.</p>
+      <div class="actions"><button class="btn primary" data-pick="stay">Stay signed in</button><button class="btn ghost" data-pick="out">Sign out anyway</button></div>`;
+    const [title, lead, mine, theirs] = kind === 'first'
+      ? ['Your account already has a plan', `Your account has a plan saved ${ago(info.at)} with ${n(info.tasks)}. This browser has a different one with ${n(info.localTasks)}.`, "Use my account's plan", "Replace it with this browser's plan"]
+      : ['Your plan changed on another device', `It was saved on another device ${ago(info.at)} (${n(info.tasks)}) while this browser had changes that weren't saved yet (${n(info.localTasks)}).`, "Use the other device's plan", "Keep this browser's plan"];
+    return `
+      <h3>${title}</h3>
+      <p class="muted">${lead} Which one should Dueline keep?</p>
+      <div class="actions"><button class="btn primary" data-pick="account">${mine}</button><button class="btn" data-pick="local">${theirs}</button></div>
+      <p class="muted small acct-note">The other plan is replaced. Close this to decide later; sync waits until you do.</p>`;
+  }
+
+  function accountHtml() {
+    if (choice) return choiceHtml();
+    const s = syncInfo, u = s.user;
+    if (u) return `
+      <div class="acct-head">${avatar(u)}<div><b>${esc(u.name)}</b><div class="muted small">${esc(u.email)}</div></div></div>
+      <p class="acct-status ${s.phase}">${statusLine(s)}</p>
+      <div class="actions">${['offline', 'error', 'paused'].includes(s.phase) ? '<button class="btn" id="acctRetry">Sync now</button>' : ''}<button class="btn ghost" id="acctOut">Sign out</button></div>
+      <p class="muted small acct-note">Your plan syncs to every device you sign in on. Signing out removes it from this browser; it stays in your account.</p>`;
+    if (s.phase === 'unavailable') return `
+      <h3>Sync is unavailable</h3>
+      <p class="muted">${esc(s.error)} Dueline still works and saves in this browser.</p>`;
+    return `
+      <h3>Sync across devices</h3>
+      <p class="muted">Sign in to keep your plan in your account and pick it up on your phone or laptop. Without an account, Dueline keeps working in this browser only.</p>
+      ${s.error ? `<p class="acct-status error">${ic('alert')}${esc(s.error)}</p>` : ''}
+      <div class="actions"><button class="btn primary" id="acctIn" ${s.phase === 'loading' ? 'disabled' : ''}>Continue with Google</button></div>
+      <p class="muted small acct-note">Your deadlines, pasted text and progress are saved to Dueline's database on Supabase. Your Gemma key stays in this browser.</p>`;
+  }
+
+  function renderAccount() {
+    const s = syncInfo, u = s.user, btn = $('menuBtn');
+    btn.innerHTML = (u ? avatar(u) : ic('user')) + '<i class="bell-dot" id="acctDot"></i>';
+    $('acctDot').hidden = !u || !['offline', 'error', 'paused'].includes(s.phase);
+    const img = btn.querySelector('img');
+    if (img) img.onerror = () => { img.replaceWith(Object.assign(document.createElement('span'), { className: 'initial', textContent: (u.name || '?')[0].toUpperCase() })); };
+    btn.title = u ? `${u.name}: ${s.phase === 'synced' ? 'synced' : s.phase}` : 'Sign in to sync across devices';
+    $('accountBody').innerHTML = accountHtml();
+  }
+
+  $('accountClose').addEventListener('click', closeAccount);
+  $('accountModal').addEventListener('click', async (e) => {
+    if (e.target.id === 'accountModal') return closeAccount();
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.pick) {
+      const pick = b.dataset.pick;
+      answer(pick === 'account' || pick === 'out');
+      $('accountModal').hidden = true;
+      if (pick === 'account') toast('Loaded the plan from your account');
+      if (pick === 'local') toast("Saving this browser's plan to your account");
+    } else if (b.id === 'acctIn') {
+      b.disabled = true;
+      try { await Sync.signIn(); } catch (err) { b.disabled = false; toast(err.message || 'Sign-in failed'); }
+    } else if (b.id === 'acctOut') {
+      b.disabled = true;
+      await Sync.signOut();
+      renderAccount();
+    } else if (b.id === 'acctRetry') {
+      Sync.retry();
+    }
+  });
+
+  function initSync() {
+    if (!Sync) { renderAccount(); return; }
+    Sync.init({
+      hadLocalPlan: !!stored,
+      getState: () => state,
+      apply: (s) => {
+        if (!s || !Array.isArray(s.tasks)) return;
+        state = s; savedJson = JSON.stringify(state);
+        $('drawer').hidden = true;
+        if (window.DuelineOnboarding) window.DuelineOnboarding.close(); // a plan from the account beats setting up again
+        render();
+      },
+      reset: () => {
+        state = demoState(); savedJson = JSON.stringify(state);
+        $('drawer').hidden = true;
+        render();
+        toast('Signed out. Your plan is safe in your account');
+      },
+      ask,
+      onStatus: (s) => {
+        syncInfo = s;
+        if (s.error && s.error !== shownError && s.phase !== 'syncing') { shownError = s.error; if (s.phase !== 'unavailable') toast(s.phase === 'offline' ? 'Offline: changes will sync later' : s.error); }
+        renderAccount();
+      },
+    });
+  }
 
   /* ---------- Schedule tab: month / week / day calendar ---------- */
   const PILL = [['#e0ecff', '#1d4ed8'], ['#fce7f3', '#be185d'], ['#e3f5e1', '#2f7d32'], ['#efe4ff', '#6d28d9'], ['#fff1d6', '#b45309'], ['#dff6f4', '#0f766e'], ['#ffe8e0', '#c2410c'], ['#eceef3', '#3f4756']];
@@ -710,7 +831,7 @@
     const ev = eventsByDay();
     // Change log on Home
     const log = state.log;
-    $('changeLog').innerHTML = log ? `<div class="log"><button class="log-x" aria-label="Dismiss">${ic('x')}</button><strong>Plan updated</strong> · ${esc(log.title)}<ul>${log.items.slice(0, 3).map((i) => `<li>${esc(i)}</li>`).join('')}</ul>${log.items.length > 3 ? `<div class="muted small">+${log.items.length - 3} more change(s)</div>` : ''}</div>` : '';
+    $('changeLog').innerHTML = log ? `<div class="log ${log.kind === 'welcome' ? 'welcome' : ''}"><button class="log-x" aria-label="Dismiss">${ic('x')}</button><strong>${log.kind === 'welcome' ? 'Welcome' : 'Plan updated'}</strong> · ${esc(log.title)}<ul>${log.items.slice(0, log.kind === 'welcome' ? 4 : 3).map((i) => `<li>${esc(i)}</li>`).join('')}</ul>${log.items.length > 3 && log.kind !== 'welcome' ? `<div class="muted small">+${log.items.length - 3} more change(s)</div>` : ''}</div>` : '';
     const lx = $('changeLog').querySelector('.log-x');
     if (lx) lx.addEventListener('click', () => { state.log = null; save(); $('changeLog').innerHTML = ''; });
 
@@ -1077,56 +1198,58 @@
   /* ---------- Home: deadlines-ahead card ---------- */
   function renderRadar() {
     if (!current) return;
-    const { plan, live } = current;
+    const { live } = current;
     const today = C.toDay(state.today);
     const DAYS = 14;
-    const isRisk = (t) => plan.unfinished[t.id] || plan.finish[t.id] == null || plan.finish[t.id] > C.toDay(t.due);
-    const box = $('radarViz');
-    const W = Math.max(240, box.clientWidth || 300), H = 104, L = 8, R = 8, base = 78;
-    const x = (d) => L + ((d - today) / (DAYS - 1)) * (W - L - R);
-    let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Deadlines in the next 14 days">`;
-    svg += `<line x1="${x(today)}" x2="${x(today + DAYS - 1)}" y1="${base}" y2="${base}" stroke="var(--line)" stroke-width="2" stroke-linecap="round"/>`;
-    for (let d = today; d < today + DAYS; d++) {
-      const wkend = [0, 6].includes(C.weekday(d));
-      svg += `<line x1="${x(d)}" x2="${x(d)}" y1="${base - 3}" y2="${base + 3}" stroke="${wkend ? 'var(--faint)' : 'var(--muted)'}" stroke-width="1"/>`;
-    }
-    svg += `<circle cx="${x(today)}" cy="${base}" r="4" fill="var(--text)"/>`;
-    svg += `<text x="${x(today)}" y="${H - 4}" font-size="10.5" fill="var(--text)" font-weight="600">Today</text>`;
-    svg += `<text x="${x(today + 7)}" y="${H - 4}" font-size="10.5" fill="var(--muted)" text-anchor="middle">${C.fmtDay(today + 7).slice(4)}</text>`;
-    svg += `<text x="${x(today + DAYS - 1)}" y="${H - 4}" font-size="10.5" fill="var(--muted)" text-anchor="end">${C.fmtDay(today + DAYS - 1).slice(4)}</text>`;
     const soon = live.filter((t) => { const d = C.toDay(t.due); return d >= today && d < today + DAYS; }).sort((a, b) => a.due.localeCompare(b.due));
-    const perDay = {};
-    const tips = [];
-    soon.forEach((t) => {
-      const d = C.toDay(t.due);
-      const k = perDay[d] = (perDay[d] || 0) + 1;
-      const cy = base - 18 - (k - 1) * 16;
-      const r = 4 + Math.min(3.5, (t.weight == null ? 10 : t.weight) / 5);
-      const risk = isRisk(t);
-      tips.push({ value: t.title, label: `${C.fmtDay(d)} · ${f1(C.remaining({ ...t, scale: t.doneH > 0 ? 1 : current.ratio }))}h left${t.weight != null ? ` · ${t.weight}% of grade` : ''}`, rows: [{ color: risk ? 'var(--warn)' : 'var(--viz-accent)', text: risk ? 'At risk' : 'On track' }] });
-      svg += `<g class="pin" tabindex="0" data-ti="${tips.length - 1}"><line x1="${x(d)}" x2="${x(d)}" y1="${base}" y2="${cy}" stroke="var(--faint)" stroke-width="1.5"/>`;
-      svg += `<circle class="dotm" cx="${x(d)}" cy="${cy}" r="${r}" style="fill:${risk ? 'var(--warn)' : 'var(--viz-accent)'}" stroke="var(--surface)" stroke-width="2"/>`;
-      svg += `<circle cx="${x(d)}" cy="${cy}" r="11" fill="transparent"/></g>`;
-    });
-    if (soon[0]) {
-      const d0 = C.toDay(soon[0].due);
-      const lx = x(d0), anchor = lx > W * 0.6 ? 'end' : 'start';
-      const ty = base - 18 - ((perDay[d0] || 1) - 1) * 16 - 14;
-      const label = soon[0].title.length > 24 ? soon[0].title.slice(0, 23) + '…' : soon[0].title;
-      svg += `<text x="${anchor === 'start' ? lx - 4 : lx + 4}" y="${Math.max(10, ty)}" font-size="11" fill="var(--text)" font-weight="600" text-anchor="${anchor}">Next: ${esc(label)}</text>`;
-    }
-    box.innerHTML = svg + '</svg>';
-    bindTips(box, tips);
-    $('radarSub').textContent = soon.length ? `${soon.length} in the next 14 days` : 'nothing due in the next 14 days';
+    const next = soon[0];
+    const when = next ? (C.toDay(next.due) === today ? 'today' : C.toDay(next.due) === today + 1 ? 'tomorrow' : C.fmtDay(C.toDay(next.due)).slice(0, 3)) : '';
+    $('radarSub').innerHTML = soon.length
+      ? `${soon.length} in the next 14 days · next: <b>${esc(next.title)}</b>, ${when}`
+      : 'Nothing due in the next 14 days';
 
     // Three buckets: count and hours of work
     const bucket = (lo, hi) => live.filter((t) => { const d = C.toDay(t.due) - today; return d >= lo && d <= hi; });
     const B = [['This week', bucket(-999, 6)], ['Next week', bucket(7, 13)], ['Later', bucket(14, 9999)]]
       .map(([label, ts]) => ({ label, n: ts.length, h: ts.reduce((a, t) => a + C.remaining({ ...t, scale: t.doneH > 0 ? 1 : current.ratio }), 0) }));
-    const mh = Math.max(1, ...B.map((b) => b.h));
-    $('radarBuckets').innerHTML = B.map((b) => `<div class="rb"><b>${b.n}</b><div class="rl">${b.label}</div><div class="rh"><i style="--w:${Math.round((b.h / mh) * 100)}%"></i>${f1(b.h)}h</div></div>`).join('');
+    $('radarBuckets').innerHTML = B.map((b) => `<div class="rb"><span class="rl">${b.label}</span><span><b>${b.n}</b><span class="rh"> · ${f1(b.h)}h</span></span></div>`).join('');
   }
-  $('btnPasteMany').addEventListener('click', () => openNew('many'));
+
+  /* ---------- onboarding (js/onboarding.js): setup that ends on a full dashboard ---------- */
+  const realToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  function openOnboarding(firstRun) {
+    if (!window.DuelineOnboarding) return;
+    window.DuelineOnboarding.open({
+      firstRun, today: realToday(), defaults: S.settings, tile: tileAt,
+      courses: isSample() ? [] : [...new Set(state.tasks.map((t) => t.course))],
+      onDone: finishOnboarding,
+      onSkip: () => { if (state.welcome) { delete state.welcome; render(); toast('This is a sample semester. Set up yours from the bar at the top'); } },
+    });
+  }
+  function finishOnboarding(r) {
+    const settings = JSON.parse(JSON.stringify({ ...S.settings, prior: 1 }));
+    settings.availability = r.availability;
+    settings.commitments = [];
+    state = { activity: {}, today: r.today, text: r.text, tasks: r.tasks, ignored: r.ignored, settings, log: null, nextId: r.tasks.length + 1, onboarded: true };
+    selDay = viewDay = cal.cursor = null;
+    const c = computePlan();
+    const today = C.toDay(state.today);
+    const first = (c.plan.days.find((d) => d.day === today) || { sessions: [] }).sessions[0];
+    const risk = c.live.filter((t) => c.plan.unfinished[t.id] || c.plan.finish[t.id] == null || c.plan.finish[t.id] > C.toDay(t.due)).length;
+    const hours = c.live.reduce((a, t) => a + C.remaining(t), 0);
+    const nCourses = new Set(r.tasks.map((t) => t.course)).size;
+    if (r.tasks.length) state.log = { kind: 'welcome', title: 'Your semester is set up', items: [
+      `${r.tasks.length} deadline${r.tasks.length > 1 ? 's' : ''} across ${nCourses} course${nCourses > 1 ? 's' : ''}, ${Math.round(hours)}h of work. ${risk ? `${risk} won't fit yet: open ${risk > 1 ? 'them' : 'it'} for options` : 'Everything fits your free time'}`,
+      first ? `Start today with "${taskById(first.id).title}" (${C.round(first.hours, 1)}h)` : 'Nothing is needed today. Your first session is on the calendar',
+      ...(r.estimated ? [`${r.estimated} dates marked (est.) are estimates. Change them in Tasks when they're announced`] : []),
+      'Add more any time: New deadline reads WhatsApp messages, screenshots and PDFs'] };
+    document.querySelector('#tabs [data-tab=home]').click();
+    render();
+    toast(r.tasks.length ? 'Your plan is ready' : 'All set. Add deadlines any time with New deadline');
+  }
+  $('btnSetupMine').addEventListener('click', () => openOnboarding(false));
 
   render();
+  initSync();
+  if (state.welcome || /[?&]welcome\b/.test(location.search)) openOnboarding(true);
 })();
