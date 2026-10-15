@@ -135,10 +135,15 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 @media (max-width: 760px) { .home { grid-template-columns: 1fr; } .col { border-right: 0; border-bottom: 1px solid var(--line); padding: 20px 16px; } }
 
 .profile { text-align: center; }
-.ring { width: 96px; height: 96px; margin: 0 auto 12px; position: relative; }
+.ring { width: 120px; height: 120px; margin: 0 auto 14px; position: relative; }
 .ring .face { position: absolute; inset: 12px; border-radius: 50%; background: var(--accent-soft); display: grid; place-items: center; font-size: 34px; }
 .ring svg { display: block; }
-.ring .pct { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-size: 22px; }
+.ring .pct { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+.ring .pct b { font-size: 28px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+.ring .pct b small { font-size: 15px; color: var(--muted); font-weight: 600; }
+.ring .pct span { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+.ring .seg-arc { cursor: default; outline: none; transition: stroke-width .12s; }
+.ring .seg-arc:hover, .ring .seg-arc:focus { stroke-width: 13; }
 .profile h2 { font-size: 24px; letter-spacing: -.02em; }
 .nudge { margin-top: 10px; font-size: 14px; }
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 20px 0; }
@@ -658,3 +663,4 @@ table.tasks td:nth-child(1) input { font-weight: 600; }
   :root:not([data-theme="light"]) .tabs button.active { background: var(--panel-2); color: var(--text); border-bottom: 0; }
   :root:not([data-theme="light"]) .btn.primary { border-radius: 12px; }
 }
+.level .risk-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); margin-right: 6px; vertical-align: 0; }

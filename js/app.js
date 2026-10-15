@@ -91,12 +91,26 @@
     const atRisk = live.filter((t) => plan.unfinished[t.id] || plan.finish[t.id] == null || plan.finish[t.id] > C.toDay(t.due));
     const next = [...live].sort((a, b) => a.due.localeCompare(b.due))[0];
     const days = next ? C.toDay(next.due) - today : null;
-    const onTrack = live.length ? (live.length - atRisk.length) / live.length : 1;
-    const R = 42, L = 2 * Math.PI * R;
-    $('healthRing').innerHTML = `<svg width="96" height="96" viewBox="0 0 96 96"><circle cx="48" cy="48" r="${R}" fill="none" style="stroke:var(--accent-soft)" stroke-width="7"/>
-      <circle cx="48" cy="48" r="${R}" fill="none" style="stroke:var(--accent)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${L * onTrack} ${L}" transform="rotate(-90 48 48)"/></svg>
-      <div class="face">${ic('cap')}</div>`;
-    $('healthLabel').innerHTML = `<div class="level">${Math.round(onTrack * 100)}% on track · ${atRisk.length ? `${atRisk.length} deadline(s) at risk` : 'every deadline fits'}</div>`;
+    // One ring segment per open deadline: accent when it fits the plan, amber when it is at risk.
+    const riskIds = new Set(atRisk.map((t) => t.id));
+    const segs = [...live].sort((a, b) => a.due.localeCompare(b.due));
+    const S = 120, cx = S / 2, rr = 50, sw = 10, n = segs.length;
+    const gapDeg = n > 1 ? Math.min(6, 120 / n) : 0;
+    const pt = (deg) => { const r = ((deg - 90) * Math.PI) / 180; return `${(cx + rr * Math.cos(r)).toFixed(2)},${(cx + rr * Math.sin(r)).toFixed(2)}`; };
+    let ring = `<svg width="${S}" height="${S}" viewBox="0 0 ${S} ${S}" role="img" aria-label="${live.length - atRisk.length} of ${live.length} deadlines on track">`;
+    ring += `<circle cx="${cx}" cy="${cx}" r="${rr}" fill="none" style="stroke:var(--panel)" stroke-width="${sw}"/>`;
+    const ringTips = [];
+    segs.forEach((t, i) => {
+      const a0 = (i * 360) / n + gapDeg / 2, a1 = ((i + 1) * 360) / n - gapDeg / 2;
+      const d = n === 1 ? `M${pt(0)}A${rr},${rr} 0 1 1 ${pt(359.99)}` : `M${pt(a0)}A${rr},${rr} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${pt(a1)}`;
+      const risk = riskIds.has(t.id);
+      ringTips.push({ value: risk ? 'At risk' : 'On track', label: `${t.title} · due ${C.fmtDay(C.toDay(t.due))}` });
+      ring += `<path d="${d}" fill="none" stroke-width="${sw}" style="stroke:${risk ? 'var(--warn)' : 'var(--viz-accent)'}" tabindex="0" data-ti="${i}" class="seg-arc"/>`;
+    });
+    ring += `</svg><div class="pct"><b>${live.length - atRisk.length}<small>/${live.length}</small></b><span>on track</span></div>`;
+    $('healthRing').innerHTML = ring;
+    bindTips($('healthRing'), ringTips);
+    $('healthLabel').innerHTML = `<div class="level">${atRisk.length ? `<i class="risk-dot"></i>${atRisk.length} deadline${atRisk.length > 1 ? 's' : ''} at risk` : 'Every deadline fits your free time'}</div>`;
     $('bellDot').hidden = !atRisk.length;
     $('bellBtn').title = atRisk.length ? `At risk: ${atRisk.map((t) => t.title).join(', ')}` : 'No deadlines at risk';
     $('bellBtn').onclick = () => (atRisk.length ? openTask(atRisk[0].id) : toast('No deadlines at risk'));
