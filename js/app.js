@@ -351,8 +351,14 @@
         <button class="btn primary" data-act="done">${ic('check')}Mark complete</button>
         <button class="btn" data-act="log1">Log 1h</button>
         <button class="btn" data-act="more2">Needs +2h</button>
+      </div>
+      <div class="dr-cal"><span>Add to</span>
+        <a class="btn small" href="${esc(window.DuelineCalendar.googleUrl(t))}" target="_blank" rel="noopener">${ic('calendar')}Google Calendar</a>
+        <button class="btn small" type="button" data-cal1="apple">${ic('calendar')}Apple Calendar</button>
       </div>`}`;
     $('drawer').hidden = false;
+    const apple1 = $('drawerBody').querySelector('[data-cal1]');
+    if (apple1) apple1.addEventListener('click', () => { window.DuelineCalendar.toApple([t]); toast('Open the downloaded file to add it to Calendar'); });
     $('drawerBody').querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => {
       const before = snapshot();
       if (b.dataset.act === 'done') { t.effortH = Math.max(t.doneH, 0.5); t.doneH = t.effortH; t.completed = true; replanLog(before, `"${t.title}" marked complete`); }
@@ -362,6 +368,24 @@
       render();
     }));
   }
+
+  /* ---------- add deadlines to Google / Apple Calendar ---------- */
+  const calTasks = () => state.tasks.filter((t) => !t.completed && C.toDay(t.due) >= C.toDay(state.today)).sort((a, b) => a.due.localeCompare(b.due));
+  function calMenu(open) {
+    $('calMenu').hidden = !open;
+    $('btnCalExport').setAttribute('aria-expanded', String(open));
+    if (open) { const n = calTasks().length; $('calMenuNote').textContent = n ? `${n} upcoming deadline${n > 1 ? 's' : ''}, all-day, with a reminder the evening before` : 'No upcoming deadlines yet'; }
+  }
+  $('btnCalExport').addEventListener('click', () => calMenu($('calMenu').hidden));
+  $('calMenu').querySelectorAll('[data-cal]').forEach((b) => b.addEventListener('click', () => {
+    const ts = calTasks();
+    calMenu(false);
+    if (!ts.length) { toast('No upcoming deadlines to add'); return; }
+    if (b.dataset.cal === 'google') { window.DuelineCalendar.toGoogle(ts); toast('In Google Calendar, import dueline-deadlines.ics'); }
+    else { window.DuelineCalendar.toApple(ts); toast('Open dueline-deadlines.ics to add them to Calendar'); }
+  }));
+  document.addEventListener('click', (e) => { if (!$('calMenu').hidden && !e.target.closest('.cal-export')) calMenu(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('calMenu').hidden) calMenu(false); });
 
   /* ---------- replanning with change log ---------- */
   const early = (n) => (n < 0 ? `LATE by ${-n} day(s)` : n === 0 ? 'on the due date, no buffer' : `${n} day(s) before the deadline`);

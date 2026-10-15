@@ -193,6 +193,14 @@
         <button data-v="board" class="active" type="button"><svg class="i"><use href="#i-board"/></svg>Board</button>
         <button data-v="table" type="button"><svg class="i"><use href="#i-list"/></svg>Table</button>
       </div>
+      <div class="cal-export">
+        <button class="btn small" id="btnCalExport" type="button" aria-haspopup="menu" aria-expanded="false"><svg class="i"><use href="#i-calendar"/></svg><span>Add to calendar</span></button>
+        <div class="cal-menu" id="calMenu" role="menu" hidden>
+          <button type="button" role="menuitem" data-cal="google"><b>Google Calendar</b><span>Downloads a file, then opens Google's import page</span></button>
+          <button type="button" role="menuitem" data-cal="apple"><b>Apple Calendar</b><span>Opens in Calendar on Mac, iPhone and iPad</span></button>
+          <p class="cal-menu-note" id="calMenuNote"></p>
+        </div>
+      </div>
       <button class="btn primary small" id="btnAddTask"><svg class="i"><use href="#i-plus"/></svg>New deadline</button>
     </div>
   </div>
@@ -305,6 +313,7 @@
 <script src="js/eval_results.js"></script>
 <script src="js/importer.js"></script>
 <script src="js/gemma.js"></script>
+<script src="js/calendar.js"></script>
 <script src="js/sync.js"></script>
 <script src="js/onboarding.js"></script>
 <script src="js/app.js"></script>

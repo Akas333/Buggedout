@@ -935,6 +935,25 @@ table.tasks td:nth-child(1) input { font-weight: 600; }
 .dr-actions { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; margin-top: 18px; }
 @media (max-width: 480px) { .dr-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dr-actions { grid-template-columns: 1fr 1fr; } .dr-actions .btn.primary { grid-column: 1 / -1; } }
 
+/* Add to calendar: Tasks header menu + drawer row */
+.cal-export { position: relative; }
+.cal-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: 290px; padding: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(0, 0, 0, .18); }
+.cal-menu button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 9px 10px; border: 0; border-radius: 8px; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.cal-menu button:hover, .cal-menu button:focus-visible { background: var(--panel); }
+.cal-menu b { font-size: 13.5px; }
+.cal-menu span { font-size: 12px; color: var(--muted); }
+.cal-menu-note { margin: 4px 10px 6px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; color: var(--faint); }
+.dr-cal { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+.dr-cal .btn { text-decoration: none; color: var(--text); }
+@media (max-width: 760px) { #tab-tasks .ph-right { position: relative; } .cal-export { position: static; } .cal-menu { left: 0; right: 0; width: auto; } }
+@media (max-width: 480px) {
+  #tab-tasks .page-head { position: relative; }
+  #tab-tasks .ph-right { position: static; }
+  .cal-export { position: absolute; top: 0; right: 0; }
+  .cal-export .btn span { display: none; }
+  .cal-menu { left: auto; right: 0; width: min(300px, calc(100vw - 32px)); }
+}
+
 /* Gemma 4 button */
 .gk-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--accent-text); white-space: nowrap; }
 .gk-badge .i { width: 15px; height: 15px; }
