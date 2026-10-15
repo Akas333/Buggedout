@@ -239,17 +239,53 @@
   </div>
 </div>
 
-<!-- New deadline popup -->
+<!-- Add deadlines popup: import first, review, then add -->
 <div class="drawer" id="pasteModal" hidden>
-  <div class="drawer-card">
+  <div class="drawer-card add-card">
     <button class="close" id="pasteClose" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button>
-    <h3>New deadline</h3>
+    <h3>Add deadlines</h3>
+    <p class="muted small add-sub">Drop it, paste it or link it. Dueline reads it and you just confirm.</p>
     <div class="seg" role="tablist">
-      <button class="active" data-mode="one" type="button">Add one</button>
-      <button data-mode="many" type="button">Paste or upload</button>
+      <button class="active" data-mode="many" type="button"><svg class="i"><use href="#i-upload"/></svg>Import</button>
+      <button data-mode="one" type="button"><svg class="i"><use href="#i-zap"/></svg>Quick add</button>
     </div>
-    <form id="oneForm" class="form-grid">
-      <label class="full">Title<input id="fTitle" required placeholder="e.g. DA 3: Transactions case study"></label>
+
+    <div id="manyPane">
+      <label class="drop" id="dropZone" tabindex="0">
+        <input type="file" id="fileInput" multiple hidden accept="image/*,.pdf,.doc,.docx,.pptx,.odt,.odp,.xlsx,.xls,.ods,.csv,.tsv,.ics,.txt,.md,.html,.htm,.rtf,.json,.eml">
+        <svg class="i"><use href="#i-upload"/></svg>
+        <span class="drop-t"><b>Drop files or screenshots</b> or <u>browse</u></span>
+        <span class="drop-s">PDF · Word · PowerPoint · Excel · .ics · images · ⌘V a screenshot</span>
+      </label>
+      <form class="url-row" id="urlForm">
+        <label class="url-input"><svg class="i"><use href="#i-link"/></svg><input type="text" id="urlInput" inputmode="url" placeholder="Paste a link: course page, PDF, Google Doc or Sheet" aria-label="Link to import"></label>
+        <button class="btn small" type="submit">Fetch</button>
+      </form>
+      <ul class="import-list" id="importList"></ul>
+      <textarea id="inputText" spellcheck="false" placeholder="…or paste text from VTOP, a syllabus or the class group"></textarea>
+
+      <div class="preview" id="preview"></div>
+
+      <div class="actions add-actions">
+        <button class="btn primary" id="btnExtract" type="button">Add deadlines</button>
+        <button class="btn gemma" id="btnGemma" type="button"><svg class="i"><use href="#i-zap"/></svg>Read with Gemma 4</button>
+      </div>
+      <details class="gemma-set" id="gemmaSet">
+        <summary>Gemma 4 settings</summary>
+        <div class="gemma-key">
+          <input type="password" id="gemmaKey" placeholder="Paste your free Gemini API key" autocomplete="off" spellcheck="false" aria-label="Gemini API key">
+          <button class="btn small" type="button" id="gemmaKeySave">Save</button>
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="gk-link">Get a free key ↗</a>
+        </div>
+        <p class="muted small gk-note">Gemma 4 reads messy text and screenshots directly. Your key stays in this browser. On Google's free tier, inputs may be used to improve Google's products. Screenshots are read in your browser first; links that block direct access go through allorigins.win or r.jina.ai.</p>
+      </details>
+      <div class="add-foot"><button class="linkish" id="btnDemo" type="button">Load sample semester</button><span>·</span><button class="linkish" id="btnReset" type="button">Clear all</button><span class="spacer"></span><button class="linkish pasteCancel" type="button">Cancel</button></div>
+    </div>
+
+    <form id="oneForm" class="form-grid" hidden>
+      <label class="full quick">Type it in one line<input id="fQuick" autocomplete="off" placeholder="e.g. DBMS DA 3 due Friday (10%) ~4h"></label>
+      <div class="full quick-parse" id="quickParse"></div>
+      <label class="full">Title<input id="fTitle" required placeholder="Filled from the line above"></label>
       <label>Course<input id="fCourse" list="courseOptions" placeholder="e.g. BCSE302L - Database Systems"></label>
       <label>Type<select id="fType"></select></label>
       <label>Due date<input type="date" id="fDue" required></label>
@@ -259,32 +295,6 @@
       <datalist id="courseOptions"></datalist>
       <div class="actions full"><button class="btn primary" type="submit">Add deadline</button><button class="btn ghost pasteCancel" type="button">Cancel</button></div>
     </form>
-    <div id="manyPane" hidden>
-      <p class="muted small">Paste from a syllabus, VTOP or a class group, or upload the curriculum, schedule or course plan. Put course headers on their own line. Lines without a date are skipped, never guessed.</p>
-      <div class="import">
-        <label class="drop" id="dropZone" tabindex="0">
-          <input type="file" id="fileInput" multiple hidden accept="image/*,.pdf,.doc,.docx,.pptx,.odt,.odp,.xlsx,.xls,.ods,.csv,.tsv,.ics,.txt,.md,.html,.htm,.rtf,.json,.eml">
-          <svg class="i"><use href="#i-upload"/></svg>
-          <span><b>Drop files or screenshots</b>, or <u>browse</u><br><span class="muted small">Images, PDF, Word, PowerPoint, Excel/CSV, calendar (.ics), text. Paste a screenshot with ⌘V / Ctrl+V.</span></span>
-        </label>
-        <form class="url-row" id="urlForm">
-          <label class="url-input"><svg class="i"><use href="#i-link"/></svg><input type="text" id="urlInput" inputmode="url" placeholder="Or a link: course page, PDF, Google Doc or Sheet" aria-label="Link to import"></label>
-          <button class="btn small" type="submit">Fetch</button>
-        </form>
-        <ul class="import-list" id="importList"></ul>
-        <p class="muted small import-note">Imported text is added below so you can check it before extracting. Screenshots are read in your browser; if that fails they go to the free OCR.space API. Links that block direct access go through allorigins.win or r.jina.ai.</p>
-      </div>
-      <textarea id="inputText" spellcheck="false" placeholder="BCSE302L - Database Systems&#10;DA 1 due 20 Oct (10%)&#10;CAT 2 on 3 Nov"></textarea>
-      <div class="gemma-key">
-        <span class="gk-badge"><svg class="i"><use href="#i-zap"/></svg>Gemma 4</span>
-        <input type="password" id="gemmaKey" placeholder="Paste your free Gemini API key" autocomplete="off" spellcheck="false" aria-label="Gemini API key">
-        <button class="btn small" type="button" id="gemmaKeySave">Save</button>
-        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="gk-link">Get a free key ↗</a>
-      </div>
-      <p class="muted small gk-note">Gemma 4 reads messy text and screenshots directly. Your key stays in this browser. On Google's free tier, inputs may be used to improve Google's products.</p>
-      <div class="actions"><button class="btn primary" id="btnExtract" type="button">Extract deadlines</button><button class="btn gemma" id="btnGemma" type="button"><svg class="i"><use href="#i-zap"/></svg>Extract with Gemma 4</button><button class="btn ghost pasteCancel" type="button">Cancel</button>
-        <span class="spacer"></span><button class="btn ghost small" id="btnDemo" type="button">Load sample semester</button><button class="btn ghost small" id="btnReset" type="button">Clear all</button></div>
-    </div>
   </div>
 </div>
 <div class="toast" id="toast" hidden></div>

@@ -965,3 +965,56 @@ table.tasks td:nth-child(1) input { font-weight: 600; }
   #btnExtract, #btnGemma { flex: 1 1 calc(50% - 4px) !important; }
   #manyPane .actions .pasteCancel, #btnDemo, #btnReset { flex: 1 1 calc(33% - 6px) !important; font-size: 12.5px; padding: 8px 6px; }
 }
+
+/* ---------- add deadlines pop-up (import first) ---------- */
+.add-card { width: min(640px, 100%); }
+.add-sub { margin: 2px 0 0; }
+.add-card .seg { margin: 14px 0 14px; }
+.add-card .seg .i { width: 15px; height: 15px; }
+#manyPane .drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 22px 16px; border: 1.5px dashed var(--line); border-radius: 14px; cursor: pointer; background: var(--panel); transition: border-color .15s, background .15s; }
+#manyPane .drop:hover, #manyPane .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+#manyPane .drop > .i { width: 26px; height: 26px; color: var(--accent-text); margin-bottom: 4px; }
+#manyPane .drop-t { font-size: 14px; }
+#manyPane .drop-t u { color: var(--accent-text); text-decoration: none; font-weight: 600; }
+#manyPane .drop-s { font-size: 12px; color: var(--muted); }
+#manyPane .url-row { margin-top: 10px; }
+#manyPane textarea { min-height: 84px; margin-top: 10px; font-size: 12.5px; }
+.preview { margin-top: 12px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.pv-empty { display: flex; align-items: center; gap: 10px; padding: 14px; color: var(--muted); font-size: 13px; }
+.pv-empty .i { width: 18px; height: 18px; flex: none; }
+.pv-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 11px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.pv-head b { font-size: 14px; }
+.pv-head span { font-size: 12px; color: var(--muted); }
+.pv-list { list-style: none; margin: 0; padding: 4px; max-height: 240px; overflow-y: auto; }
+.pv-list li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; cursor: pointer; outline: none; }
+.pv-list li:hover, .pv-list li:focus { background: var(--hover); }
+.pv-box { width: 20px; height: 20px; border-radius: 6px; background: var(--accent); display: grid; place-items: center; color: #fff; }
+.pv-box .i { width: 14px; height: 14px; stroke-width: 2.6; }
+.pv-list li.off .pv-box { background: transparent; box-shadow: inset 0 0 0 1.5px var(--faint); color: transparent; }
+.pv-list li.off .pv-t, .pv-list li.off .pv-d { opacity: .45; }
+.pv-t { min-width: 0; }
+.pv-t b { display: block; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-t span { font-size: 12px; color: var(--muted); }
+.pv-t em { font-style: normal; color: var(--warn-ink); font-weight: 600; }
+.pv-d { font-size: 12.5px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.add-actions { display: grid !important; grid-template-columns: 1.3fr 1fr; gap: 8px; margin-top: 12px; }
+.add-actions .btn { white-space: nowrap; }
+#btnExtract[disabled] { opacity: .5; cursor: not-allowed; }
+.gemma-set { margin-top: 10px; font-size: 13px; }
+.gemma-set summary { cursor: pointer; color: var(--muted); width: fit-content; }
+.gemma-set .gemma-key { margin-top: 8px; }
+.add-foot { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--faint); font-size: 12.5px; }
+.add-foot .spacer { flex: 1; }
+.linkish { background: none; border: 0; padding: 0; color: var(--muted); cursor: pointer; font-size: 12.5px; }
+.linkish:hover { color: var(--text); text-decoration: underline; }
+#oneForm .quick input { font-size: 15px; padding: 12px 12px; border-color: var(--accent); }
+.quick-parse { display: flex; flex-wrap: wrap; gap: 6px; min-height: 0; margin-top: -4px; }
+.quick-parse span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; background: var(--panel); border-radius: 999px; padding: 4px 10px; color: var(--text); }
+.quick-parse .i { width: 13px; height: 13px; }
+.quick-parse .qp-ok { background: var(--ok-soft); color: var(--ok-ink); font-weight: 600; }
+.quick-parse .qp-hint { background: var(--warn-soft); color: var(--warn-ink); }
+@media (max-width: 760px) {
+  .add-actions { grid-template-columns: 1fr; }
+  #manyPane .drop { padding: 16px 12px; }
+  .pv-list { max-height: 200px; }
+}

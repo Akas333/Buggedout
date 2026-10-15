@@ -89,7 +89,7 @@ The **Paste or upload** tab in the New deadline pop-up accepts the curriculum, s
 | Excel `.xlsx/.xls/.ods` | SheetJS, every sheet | CDN once |
 | Links (course pages, PDFs, public Google Docs/Sheets/Slides/Drive files) | Fetched directly, then via **allorigins.win**, then **r.jina.ai** (free, no key). Google links are rewritten to their export URLs | Yes |
 
-Re-extracting after an import keeps progress on tasks it finds again, and keeps deadlines you added by hand. Files stay in your browser unless local OCR fails (OCR.space) or you import a link (the public readers fetch it).
+Imports only add or update: a deadline found again keeps its progress, and nothing already in the plan is removed. Every detected deadline is shown in a checklist first, so you untick anything wrong before adding. Files stay in your browser unless local OCR fails (OCR.space) or you import a link (the public readers fetch it).
 
 ## Robustness and edge cases handled
 

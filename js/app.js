@@ -68,7 +68,6 @@
   }
 
   function renderSide() {
-    if (document.activeElement !== $('inputText')) $('inputText').value = state.text;
     const grid = $('availGrid');
     if (!grid.children.length) {
       grid.innerHTML = C.WD.map((d, i) => `<label>${d}<input type="number" min="0" max="16" step="0.5" data-wd="${i}"></label>`).join('');
@@ -403,42 +402,81 @@
     document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('active', x === b));
     document.querySelectorAll('main.tab').forEach((x) => x.classList.toggle('active', x.id === 'tab-' + b.dataset.tab));
   });
+  /* ---------- live preview: everything detected, ticked, ready to add ---------- */
+  const preview = { tasks: [], ignored: [], via: 'rules', textAt: null, off: new Set(), metaLines: [] };
+  function rulesPreview() {
+    const text = $('inputText').value;
+    const r = C.extractTasks(text, state.today);
+    Object.assign(preview, { tasks: r.tasks, ignored: r.ignored, via: 'rules', textAt: text, off: new Set(), metaLines: [] });
+  }
+  function renderPreview() {
+    const text = $('inputText').value;
+    if (preview.textAt !== text) rulesPreview();
+    const ts = preview.tasks, on = ts.filter((t) => !preview.off.has(t.id));
+    const box = $('preview');
+    if (!ts.length) {
+      box.innerHTML = `<div class="pv-empty">${ic('file')}<span>${text.trim() ? 'No dated deadlines found yet. Try <b>Read with Gemma 4</b> for messy text or screenshots.' : 'Deadlines you drop, paste or link show up here to check.'}</span></div>`;
+    } else {
+      box.innerHTML = `<div class="pv-head"><b>${ts.length} deadline${ts.length > 1 ? 's' : ''} found</b><span>${preview.via === 'gemma' ? 'read by Gemma 4' : 'read instantly, offline'}${preview.ignored.length ? ` · ${preview.ignored.length} line${preview.ignored.length > 1 ? 's' : ''} without a date skipped` : ''}</span></div>
+        <ul class="pv-list">${ts.map((t) => `<li class="${preview.off.has(t.id) ? 'off' : ''} ${t.confidence === 'low' ? 'low' : ''}" data-id="${t.id}" tabindex="0" role="checkbox" aria-checked="${!preview.off.has(t.id)}">
+          <span class="pv-box">${ic('check')}</span>
+          <span class="pv-t"><b>${esc(t.title)}</b><span>${esc(shortCourse(t.course))} · ${esc((C.TYPES.find((x) => x.type === t.type) || {}).label || t.type)}${t.weight != null ? ` · ${t.weight}%` : ''}${t.confidence === 'low' ? ' · <em>check this</em>' : ''}</span></span>
+          <span class="pv-d">${C.fmtDay(C.toDay(t.due))}</span></li>`).join('')}</ul>`;
+      box.querySelectorAll('li').forEach((li) => {
+        const toggle = () => { preview.off.has(li.dataset.id) ? preview.off.delete(li.dataset.id) : preview.off.add(li.dataset.id); renderPreview(); };
+        li.addEventListener('click', toggle);
+        li.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); } });
+      });
+    }
+    $('btnExtract').textContent = on.length ? `Add ${on.length} deadline${on.length > 1 ? 's' : ''}` : 'Add deadlines';
+    $('btnExtract').disabled = !on.length;
+  }
+  let pvTimer;
+  $('inputText').addEventListener('input', () => { clearTimeout(pvTimer); pvTimer = setTimeout(renderPreview, 180); });
   $('btnExtract').addEventListener('click', () => {
     state.text = $('inputText').value;
-    const { tasks, ignored } = C.extractTasks(state.text, state.today);
-    applyExtraction(tasks, ignored, `Extracted ${tasks.length} tasks from your text`);
+    if (preview.textAt !== state.text) rulesPreview();
+    const picked = preview.tasks.filter((t) => !preview.off.has(t.id));
+    if (!picked.length) return;
+    const ids = new Set(picked.map((t) => t.id));
+    picked.forEach((t) => { t.deps = t.deps.filter((d) => ids.has(d)); });
+    const fromGemma = preview.via === 'gemma';
+    applyExtraction(picked, preview.ignored, `${fromGemma ? 'Gemma 4 read' : 'Added'} ${picked.length} deadline${picked.length > 1 ? 's' : ''}${fromGemma ? '' : ' from your import'}`, preview.metaLines);
+    Object.assign(preview, { tasks: [], ignored: [], via: 'rules', textAt: null, off: new Set(), metaLines: [] });
   });
   // Shared by the rule-based extractor and Gemma 4.
   function applyExtraction(tasks, ignored, title, extra = []) {
-    // Re-extracting (e.g. after importing another file) keeps progress on tasks it finds again,
-    // and keeps deadlines added by hand.
+    // Imports only add or update: a task found again keeps its progress, and nothing
+    // already in the plan is removed (deleting is always an explicit action).
     const key = (t) => `${t.course}|${t.title}|${t.due}`.toLowerCase();
-    const old = new Map(state.tasks.filter((t) => t.source).map((t) => [key(t), t]));
-    const manual = state.tasks.filter((t) => !t.source);
-    const idMap = {};
+    const old = new Map(state.tasks.map((t) => [key(t), t]));
+    const idMap = {}, matched = new Set();
     let kept = 0;
     tasks.forEach((t) => {
       const o = old.get(key(t));
       idMap[t.id] = o ? o.id : `t${state.nextId++}`;
       t.origEst = t.effortH;
-      if (o) { kept++; ['doneH', 'completed', 'started', 'origEst', 'effortH', 'effortSource'].forEach((f) => { if (o[f] !== undefined) t[f] = o[f]; }); }
+      if (o) { kept++; matched.add(o.id); ['doneH', 'completed', 'started', 'origEst', 'effortH', 'effortSource'].forEach((f) => { if (o[f] !== undefined) t[f] = o[f]; }); }
     });
     tasks.forEach((t) => { t.id = idMap[t.id]; t.deps = t.deps.map((d) => idMap[d]); });
-    const ids = new Set(tasks.map((t) => t.id).concat(manual.map((t) => t.id)));
-    manual.forEach((t) => { t.deps = t.deps.filter((d) => ids.has(d)); });
-    state.tasks = tasks.concat(manual); state.ignored = ignored;
+    const others = state.tasks.filter((t) => !matched.has(t.id));
+    const ids = new Set(tasks.map((t) => t.id).concat(others.map((t) => t.id)));
+    others.forEach((t) => { t.deps = t.deps.filter((d) => ids.has(d)); });
+    state.tasks = tasks.concat(others); state.ignored = ignored;
+    const n = tasks.length - kept;
     const files = [...new Set(tasks.map((t) => t.source.file).filter(Boolean))];
     state.log = { title, items: [
       ...extra,
       `${tasks.filter((t) => t.confidence === 'high').length} high-confidence, ${tasks.filter((t) => t.confidence !== 'high').length} worth double-checking (Tasks tab)`,
       ...(files.length ? [`${tasks.filter((t) => t.source.file).length} from imported files: ${files.join(', ')}`] : []),
-      ...(kept ? [`Progress kept on ${kept} task(s) you already had`] : []),
-      ...(manual.length ? [`${manual.length} deadline(s) you added by hand kept`] : []),
+      ...(kept ? [`${kept} already in your plan: updated, progress kept`] : []),
+      ...(others.length ? [`${others.length} other deadline${others.length > 1 ? 's' : ''} untouched`] : []),
       `${tasks.filter((t) => t.deps.length).length} dependency link(s) detected`,
       `${ignored.length} line(s) skipped: no date, so nothing was guessed`] };
     importList.length = 0; renderImports(); gemmaImages.length = 0;
+    $('inputText').value = '';
     $('pasteModal').hidden = true;
-    toast(`Found ${tasks.length} tasks`);
+    toast(n ? `${n} new deadline${n > 1 ? 's' : ''} added` : 'Deadlines updated');
     render();
   }
 
@@ -453,13 +491,14 @@
     try {
       const r = await window.DuelineGemma.extract({ text, images: gemmaImages, today: state.today, C });
       if (!r.tasks.length) { toast('Gemma 4 found no dated deadlines'); return; }
-      state.text = text;
-      applyExtraction(r.tasks, r.ignored, `Gemma 4 found ${r.tasks.length} deadlines`, [
-        `${r.meta.verified} matched word-for-word in your text${r.tasks.length - r.meta.verified ? `, ${r.tasks.length - r.meta.verified} marked "check this" (Tasks tab)` : ''}`,
+      Object.assign(preview, { tasks: r.tasks, ignored: r.ignored, via: 'gemma', textAt: text, off: new Set(), metaLines: [
+        `${r.meta.verified} matched word-for-word in your text${r.tasks.length - r.meta.verified ? `, ${r.tasks.length - r.meta.verified} marked "check this"` : ''}`,
         ...(r.meta.images ? [`Read ${r.meta.images} screenshot(s) directly`] : []),
-        `Model: ${r.meta.via}`]);
+        `Model: ${r.meta.via}`] });
+      renderPreview();
+      toast(`Gemma 4 found ${r.tasks.length} deadlines. Check them, then add`);
     } catch (e) {
-      if (e.code === 'NO_KEY') $('gemmaKey').focus();
+      if (e.code === 'NO_KEY') { $('gemmaSet').open = true; $('gemmaKey').focus(); }
       toast(e.message || 'Gemma 4 failed. The regular extractor still works');
     } finally { btn.disabled = false; btn.innerHTML = label; }
   });
@@ -507,6 +546,7 @@
       Object.assign(it, { status: 'error', pct: null, msg: e.message || String(e) });
     }
     renderImports();
+    renderPreview();
   }
   function importFiles(files) {
     if (!window.DuelineImport) { toast('Importer failed to load. You can still paste text'); return; }
@@ -577,10 +617,29 @@
     if (!$('fDue').value || $('fDue').value < state.today) $('fDue').value = C.fromDay(C.toDay(state.today) + 7);
     setMode(mode);
     $('pasteModal').hidden = false;
-    (mode === 'one' ? $('fTitle') : $('inputText')).focus();
+    if (mode === 'one') { $('fQuick').value = ''; $('quickParse').innerHTML = ''; if (!isPhone()) $('fQuick').focus(); }
+    else renderPreview();
   }
   document.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
-  ['btnOpenPaste', 'btnNewTop', 'btnNewMid', 'btnAddTask'].forEach((id) => $(id).addEventListener('click', () => openNew('one')));
+  ['btnOpenPaste', 'btnNewTop', 'btnNewMid', 'btnAddTask'].forEach((id) => $(id).addEventListener('click', () => openNew('many')));
+  // Quick add: one natural line fills every field
+  $('fQuick').addEventListener('input', () => {
+    const line = $('fQuick').value.trim();
+    if (!line) { $('quickParse').innerHTML = ''; return; }
+    const hasDueWord = /\b(due|deadline|submit|exam|test|on|by)\b/i.test(line);
+    const r = C.extractTasks(hasDueWord ? line : `${line} due`, state.today).tasks[0];
+    if (!r) { $('quickParse').innerHTML = `<span class="qp-hint">${ic('calendar')}Add a date, e.g. "due Friday" or "on 28 Oct"</span>`; return; }
+    const known = [...new Set(state.tasks.map((t) => t.course))];
+    const course = r.course !== 'General' ? (known.find((c) => c.toUpperCase().startsWith(r.course.toUpperCase())) || r.course) : '';
+    $('fTitle').value = r.title.replace(/\s+due$/i, '').replace(new RegExp(`^${r.course.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+`, 'i'), '') || r.title;
+    if (course) $('fCourse').value = course;
+    $('fType').value = r.type;
+    $('fDue').value = r.due;
+    $('fWeight').value = r.weight == null ? '' : r.weight;
+    $('fEffort').value = r.effortSource === 'stated in text' ? r.effortH : '';
+    const label = (C.TYPES.find((x) => x.type === r.type) || {}).label || r.type;
+    $('quickParse').innerHTML = `<span>${ic('calendar')}${C.fmtDay(C.toDay(r.due))}</span><span>${esc(label)}</span>${course ? `<span>${esc(shortCourse(course))}</span>` : ''}${r.weight != null ? `<span>${r.weight}%</span>` : ''}${r.effortSource === 'stated in text' ? `<span>${r.effortH}h</span>` : ''}<span class="qp-ok">${ic('check')}Press Enter to add</span>`;
+  });
   $('menuBtn').addEventListener('click', () => openNew('many'));
   $('pasteClose').addEventListener('click', () => { $('pasteModal').hidden = true; });
   document.querySelectorAll('.pasteCancel').forEach((b) => b.addEventListener('click', () => { $('pasteModal').hidden = true; }));
